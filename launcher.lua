@@ -1,7 +1,7 @@
 --[[
     ╔══════════════════════════════════════════════════╗
-    ║   N3XT  ·  LAUNCHER  v7.5                        ║
-    ║   universal hub · MM2 assist · cursor-safe aim   ║
+    ║   N3XT  ·  LAUNCHER  v7.6                        ║
+    ║   universal + MM2 tabbed UI + rivals             ║
     ╚══════════════════════════════════════════════════╝
 ]]
 
@@ -25,7 +25,6 @@ local THEME = {
     BG_BAR      = Color3.fromRGB(24, 20, 38),
     GRID_LINE   = Color3.fromRGB(52, 40, 88),
     ACCENT      = Color3.fromRGB(100, 220, 235),
-    ACCENT_GLOW = Color3.fromRGB(80, 200, 230),
     PURPLE      = Color3.fromRGB(140, 100, 230),
     TEXT        = Color3.fromRGB(226, 224, 240),
     TEXT_DIM    = Color3.fromRGB(140, 135, 165),
@@ -37,23 +36,19 @@ local THEME = {
 }
 
 local CFG = {
-    INF_JUMP = true,  NOCLIP = false, SPEED = false, FLY = false,
-    JUMP_POWER = 50,  WALK_SPEED = 80, FLY_SPEED = 120,
+    INF_JUMP = true, NOCLIP = false, SPEED = false, FLY = false,
+    JUMP_POWER = 50, WALK_SPEED = 80, FLY_SPEED = 120,
 
     ESP_ENABLED = false, ESP_BOXES = true, ESP_LINES = false,
     ESP_NAMES = true, ESP_TEAM_CHECK = false,
     ESP_COLOR = Color3.fromRGB(140, 90, 255),
 
-    AIMBOT_ENABLED      = false,
-    AIMBOT_LOCK_STATE   = false,
-    AIMBOT_TEAM_CHECK   = false,
-    AIMBOT_WALLCHECK    = false,
-    AIMBOT_BYPASS       = true,
-    AIMBOT_MOUSELOCK    = true,
-    AIMBOT_FOV          = 200,
-    AIMBOT_SMOOTH       = 0.45,
-    AIMBOT_BONE_PRIORITY = {"Head", "UpperTorso", "Torso", "HumanoidRootPart"},
-    AIMBOT_LOCK_KEY     = Enum.KeyCode.E,
+    AIMBOT_ENABLED = false, AIMBOT_LOCK_STATE = false,
+    AIMBOT_TEAM_CHECK = false, AIMBOT_WALLCHECK = false,
+    AIMBOT_BYPASS = true, AIMBOT_MOUSELOCK = true,
+    AIMBOT_FOV = 200, AIMBOT_SMOOTH = 0.45,
+    AIMBOT_BONE_PRIORITY = {"Head","UpperTorso","Torso","HumanoidRootPart"},
+    AIMBOT_LOCK_KEY = Enum.KeyCode.E,
 
     APP_FIRE = false, APP_HIGHLIGHT = false, APP_SMOKE = false,
     APP_SPARKLES = false, APP_NO_ARMS = false, APP_INVISIBLE = false,
@@ -62,11 +57,9 @@ local CFG = {
     ETC_GODMODE = false, ETC_ANCHOR = false,
     ETC_NO_LEGS = false, ETC_TOGGLE_NIGHT = false,
     ETC_FLASHLIGHT = false, ETC_HIGH_HIPS = false, ETC_FLOAT = false,
-    ETC_CTRL_CLICK_TP = false,
-    ETC_INVINCIBLE = false,
+    ETC_CTRL_CLICK_TP = false, ETC_INVINCIBLE = false,
 
     GRID_DENSITY = 26,
-    GRID_ANIM    = true,
 }
 
 local State = {
@@ -75,21 +68,16 @@ local State = {
     UI = {}, GridDots = {},
     MM2Loaded = false, RivalsLoaded = false,
     ActiveTab = "Executor",
-    Tabs = {}, TabBtns = {},
     ESP = { boxes = {}, lines = {}, names = {} },
     APP = { instances = {} },
-    AIM = {
-        fovCircle = nil, hookInstalled = false, origNewindex = nil,
-        desiredCF = nil, bypassHook = false, lockedTarget = nil,
-        origCamType = nil,
-    },
-    originalLegs = {},
-    flashlight = nil,
-    originalMaxHealth = nil,
+    AIM = { fovCircle = nil, hookInstalled = false, origNewindex = nil,
+            desiredCF = nil, bypassHook = false, lockedTarget = nil,
+            origCamType = nil },
+    originalLegs = {}, flashlight = nil, originalMaxHealth = nil,
 }
 
 -- ============================================================
---  MM2 SOURCE v3.9  (assist aim, working gun TP, role pref)
+--  MM2 SOURCE v4.0 — tabbed UI
 -- ============================================================
 local MM2_SOURCE = [==[
 local Players           = game:GetService("Players")
@@ -102,29 +90,27 @@ local LocalPlayer       = Players.LocalPlayer
 
 local CFG = {
     esp = { Murderer = true, Sheriff = true, Innocent = true },
-    aimbot    = { enabled = false, fov = 120, showFOV = true, strength = 0.05 },
-    invis     = false,
+    aimbot = { enabled = false, fov = 120, showFOV = true, strength = 0.05 },
+    invis = false,
     rolePreference = nil,
-    gunTP     = { enabled = false, cooldown = 1.5 },
+    gunTP = { enabled = false, cooldown = 1.5 },
     gunPickup = { enabled = false },
-    kill      = { purgeInnocents = false, lastPurge = 0, purgeInterval = 2.0 },
+    kill = { purgeInnocents = false, lastPurge = 0, purgeInterval = 2.0 },
     invincible = false,
     updateInterval = 0.5,
 }
 
 local COLORS = {
-    Murderer = Color3.fromRGB(230, 55,  55),
-    Sheriff  = Color3.fromRGB(75,  155, 255),
-    Innocent = Color3.fromRGB(75,  215, 100),
+    Murderer = Color3.fromRGB(230, 55, 55),
+    Sheriff  = Color3.fromRGB(75, 155, 255),
+    Innocent = Color3.fromRGB(75, 215, 100),
     Unknown  = Color3.fromRGB(180, 180, 180),
 }
-local ICONS = {
-    Murderer = "MURDERER", Sheriff = "SHERIFF",
-    Innocent = "INNOCENT", Unknown = "UNKNOWN",
-}
+local ICONS = { Murderer = "MURDERER", Sheriff = "SHERIFF",
+    Innocent = "INNOCENT", Unknown = "UNKNOWN" }
 
 local KNIFE_PAT = {"knife","blade","dark","seer","chroma","godly","elder","shadow","luger","corrupt","shard","ice","wood","rainbow"}
-local GUN_PAT   = {"gun","sheriff","revolver","deagle","pistol"}
+local GUN_PAT = {"gun","sheriff","revolver","deagle","pistol"}
 
 local function matchAny(name, pats)
     name = name:lower()
@@ -139,7 +125,7 @@ local function scanTools(c)
     for _, o in ipairs(c:GetChildren()) do
         if o:IsA("Tool") then
             if matchAny(o.Name, KNIFE_PAT) then return "Murderer" end
-            if matchAny(o.Name, GUN_PAT)   then return "Sheriff"  end
+            if matchAny(o.Name, GUN_PAT) then return "Sheriff" end
         end
     end
     return nil
@@ -147,11 +133,9 @@ end
 
 local function detectRole(player)
     local char = player.Character
-    local bp   = player:FindFirstChild("Backpack")
-    local r    = char and scanTools(char)
-    if r then return r end
-    r = scanTools(bp)
-    if r then return r end
+    local bp = player:FindFirstChild("Backpack")
+    local r = char and scanTools(char); if r then return r end
+    r = scanTools(bp); if r then return r end
     for _, loc in ipairs({player, char}) do
         if loc then
             local rv = loc:FindFirstChild("Role")
@@ -189,7 +173,6 @@ local function getInnocents()
     return list
 end
 
--- KILL ENGINE (server-gated on most MM2 builds; harmless to fire)
 local KILL_REMOTE_NAMES = {
     "KillPlayer","Kill","Damage","DamagePlayer","Stab","Shoot",
     "Hit","Attack","DamageHumanoid","ApplyDamage","KillCharacter",
@@ -199,7 +182,7 @@ local KILL_REMOTE_NAMES = {
 local function blastKillRemotes(target)
     if not target then return false end
     local char = target.Character
-    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not hum then return false end
     local fired = false
     local function tryKillRemote(obj)
@@ -244,7 +227,6 @@ _G.N3xtMM2_PurgeStep = function()
     return _G.N3xtMM2_Kill(list[math.random(1, #list)])
 end
 
--- ESP
 local highlights, billboards = {}, {}
 local function makeHighlight(player)
     local role = detectRole(player)
@@ -294,7 +276,6 @@ local function removeESP(player)
     if billboards[player] then billboards[player]:Destroy(); billboards[player] = nil end
 end
 
--- ASSIST AIMBOT (no camera hijack — mouse nudge only)
 local fovCircle
 local function buildFOVCircle()
     if not (typeof(Drawing) == "table") then return end
@@ -303,9 +284,7 @@ local function buildFOVCircle()
         local circ = Drawing.new("Circle")
         circ.Radius = CFG.aimbot.fov
         circ.Color = Color3.fromRGB(200,200,255)
-        circ.Thickness = 1.2
-        circ.Filled = false
-        circ.Visible = false
+        circ.Thickness = 1.2; circ.Filled = false; circ.Visible = false
         return circ
     end)
     if ok then fovCircle = c end
@@ -315,23 +294,21 @@ local function inFOV(sp)
     return (sp - c).Magnitude <= CFG.aimbot.fov
 end
 local function doAimbot()
-    if not CFG.aimbot.enabled      then return end
+    if not CFG.aimbot.enabled then return end
     local m = getMurderer()
-    if not m or not m.Character    then return end
+    if not m or not m.Character then return end
     local head = m.Character:FindFirstChild("Head")
-    if not head                    then return end
+    if not head then return end
     local sp, onScreen = Camera:WorldToViewportPoint(head.Position)
-    if not onScreen                then return end
+    if not onScreen then return end
     if not inFOV(Vector2.new(sp.X, sp.Y)) then return end
-
     local camCF = Camera.CFrame
-    local worldDir = (head.Position - camCF.Position)
+    local worldDir = head.Position - camCF.Position
     if worldDir.Magnitude < 0.001 then return end
     worldDir = worldDir.Unit
     if camCF.LookVector:Dot(worldDir) <= 0 then return end
-
     local hA = math.asin(math.clamp(camCF.RightVector:Dot(worldDir), -1, 1))
-    local vA = math.asin(math.clamp(camCF.UpVector:Dot(worldDir),   -1, 1))
+    local vA = math.asin(math.clamp(camCF.UpVector:Dot(worldDir), -1, 1))
     local ppr = Camera.ViewportSize.X / (2 * math.pi)
     local strength = CFG.aimbot.strength or 0.05
     if mousemoverel then
@@ -339,7 +316,6 @@ local function doAimbot()
     end
 end
 
--- PROPER INVISIBILITY
 local invisActive = false
 local invisLoopConn = nil
 local invisOrigCFrame = nil
@@ -450,7 +426,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     end)
 end)
 
--- CLIENT INVINCIBLE (cosmetic)
 local mm2OrigMax = nil
 local function setMM2Invincible(on)
     local char = LocalPlayer.Character
@@ -473,7 +448,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     if CFG.invincible then setMM2Invincible(true) end
 end)
 
--- ROLE PREFERENCE
 local ROLE_REMOTE_NAMES = {"RequestRole","SetRole","ChooseRole","RoleRequest",
     "SelectRole","AssignRole","SetMurderer","SetSheriff",
     "RoleSelection","PickRole","PlayerRole","RoleAssign",
@@ -513,7 +487,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     for i = 1, 5 do task.wait(0.3 * i); applyRolePreference() end
 end)
 
--- GUN TELEPORT (fixed — searches full descendants, models, prompts)
 local lastGunTP = 0
 local function findGunTool()
     for _, obj in ipairs(workspace:GetChildren()) do
@@ -558,8 +531,7 @@ local function teleportToGun()
     local found = findGunTool()
     if not found then return false end
     local pos = nil
-    if found:IsA("BasePart") then
-        pos = found.Position
+    if found:IsA("BasePart") then pos = found.Position
     elseif found:IsA("Tool") then
         local handle = found:FindFirstChild("Handle")
         if handle and handle:IsA("BasePart") then pos = handle.Position end
@@ -573,7 +545,6 @@ local function teleportToGun()
     return true
 end
 
--- auto-pickup loop
 RunService.Heartbeat:Connect(function()
     if CFG.gunTP.enabled then teleportToGun() end
     if CFG.gunPickup.enabled then
@@ -617,7 +588,6 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0, 13)
 local stroke = Instance.new("UIStroke", main)
 stroke.Color = Color3.fromRGB(55, 55, 80); stroke.Thickness = 1
 
--- title bar
 local titleBar = Instance.new("Frame", main)
 titleBar.Size = UDim2.new(1, 0, 0, 42)
 titleBar.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
@@ -656,7 +626,6 @@ minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 16
 minBtn.BorderSizePixel = 0
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 7)
 
--- tab bar
 local tabBar = Instance.new("Frame", main)
 tabBar.Size = UDim2.new(1, 0, 0, 32)
 tabBar.Position = UDim2.new(0, 0, 0, 42)
@@ -668,17 +637,15 @@ tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 tabLayout.Padding = UDim.new(0, 2)
 tabLayout.Parent = tabBar
 
-local TABS = {"ESP", "Aim", "Kill", "Gun", "Roles", "Misc"}
+local TABS = {"ESP","Aim","Kill","Gun","Roles","Misc"}
 local tabButtons = {}
 local tabPages = {}
-
 local contentHolder = Instance.new("Frame", main)
-contentHolder.Size = UDim2.new(1, 0, 1, -74 - 32)
+contentHolder.Size = UDim2.new(1, 0, 1, -106)
 contentHolder.Position = UDim2.new(0, 0, 0, 74)
 contentHolder.BackgroundTransparency = 1
 contentHolder.ClipsDescendants = true
 
--- create pages
 for i, name in ipairs(TABS) do
     local btn = Instance.new("TextButton", tabBar)
     btn.Size = UDim2.new(1/#TABS, -2, 1, 0)
@@ -705,14 +672,11 @@ for i, name in ipairs(TABS) do
     lp.Padding = UDim.new(0, 5)
     lp.SortOrder = Enum.SortOrder.LayoutOrder
     local pp = Instance.new("UIPadding", page)
-    pp.PaddingTop = UDim.new(0, 8)
-    pp.PaddingBottom = UDim.new(0, 10)
-    pp.PaddingLeft = UDim.new(0, 8)
-    pp.PaddingRight = UDim.new(0, 8)
+    pp.PaddingTop = UDim.new(0, 8); pp.PaddingBottom = UDim.new(0, 10)
+    pp.PaddingLeft = UDim.new(0, 8); pp.PaddingRight = UDim.new(0, 8)
     tabPages[name] = page
 end
 
--- tab switching
 local function selectTab(name)
     for i, n in ipairs(TABS) do
         local on = n == name
@@ -728,7 +692,6 @@ for name, btn in pairs(tabButtons) do
     btn.MouseButton1Click:Connect(function() selectTab(name) end)
 end
 
--- widget factories — take a page as first argument now
 local function sectionOn(page, text, order)
     local f = Instance.new("Frame", page)
     f.Size = UDim2.new(1, 0, 0, 22)
@@ -757,8 +720,7 @@ local function toggleOn(page, label, default, accent, order, cb)
     row.LayoutOrder = order
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
     local lbl = Instance.new("TextLabel", row)
-    lbl.Size = UDim2.new(1, -60, 1, 0)
-    lbl.Position = UDim2.new(0, 12, 0, 0)
+    lbl.Size = UDim2.new(1, -60, 1, 0); lbl.Position = UDim2.new(0, 12, 0, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = label
     lbl.TextColor3 = Color3.fromRGB(218, 218, 235)
@@ -862,20 +824,16 @@ local function buttonOn(page, label, accent, order, cb)
     btn.MouseButton1Click:Connect(cb)
 end
 
--- ============ ESP PAGE ============
 do
-    local page = tabPages["ESP"]
-    local o = 0
+    local page = tabPages["ESP"]; local o = 0
     sectionOn(page, "ESP Options", o); o = o + 1
     toggleOn(page, "Show Murderer", CFG.esp.Murderer, COLORS.Murderer, o, function(v) CFG.esp.Murderer = v end); o = o + 1
-    toggleOn(page, "Show Sheriff",  CFG.esp.Sheriff,  COLORS.Sheriff,  o, function(v) CFG.esp.Sheriff  = v end); o = o + 1
-    toggleOn(page, "Show Innocents",CFG.esp.Innocent, COLORS.Innocent, o, function(v) CFG.esp.Innocent = v end); o = o + 1
+    toggleOn(page, "Show Sheriff", CFG.esp.Sheriff, COLORS.Sheriff, o, function(v) CFG.esp.Sheriff = v end); o = o + 1
+    toggleOn(page, "Show Innocents", CFG.esp.Innocent, COLORS.Innocent, o, function(v) CFG.esp.Innocent = v end); o = o + 1
 end
 
--- ============ AIM PAGE ============
 do
-    local page = tabPages["Aim"]
-    local o = 0
+    local page = tabPages["Aim"]; local o = 0
     sectionOn(page, "Assist", o); o = o + 1
     toggleOn(page, "Aim Assist", CFG.aimbot.enabled, Color3.fromRGB(255,180,50), o, function(v)
         CFG.aimbot.enabled = v
@@ -888,15 +846,11 @@ do
         CFG.aimbot.fov = v
         if fovCircle then fovCircle.Radius = v end
     end); o = o + 1
-    sliderOn(page, "Strength", 1, 40, 5, o, function(v)
-        CFG.aimbot.strength = v / 100
-    end); o = o + 1
+    sliderOn(page, "Strength", 1, 40, 5, o, function(v) CFG.aimbot.strength = v / 100 end); o = o + 1
 end
 
--- ============ KILL PAGE ============
 do
-    local page = tabPages["Kill"]
-    local o = 0
+    local page = tabPages["Kill"]; local o = 0
     sectionOn(page, "Kill Remotes (server-gated)", o); o = o + 1
     buttonOn(page, "Kill Murderer", COLORS.Murderer, o, function() _G.N3xtMM2_KillMurderer() end); o = o + 1
     buttonOn(page, "Kill Sheriff", COLORS.Sheriff, o, function() _G.N3xtMM2_KillSheriff() end); o = o + 1
@@ -904,26 +858,10 @@ do
         CFG.kill.purgeInnocents = v
         CFG.kill.lastPurge = 0
     end); o = o + 1
-    sectionOn(page, "Notes", o); o = o + 1
-    local note = Instance.new("TextLabel", page)
-    note.Size = UDim2.new(1, 0, 0, 60)
-    note.BackgroundColor3 = Color3.fromRGB(19, 19, 27)
-    note.BackgroundTransparency = 0.3
-    note.BorderSizePixel = 0
-    note.LayoutOrder = o
-    note.Text = "Server validates role before applying kills. These buttons only work on loose servers."
-    note.TextColor3 = Color3.fromRGB(130, 130, 160)
-    note.Font = Enum.Font.Gotham
-    note.TextSize = 10
-    note.TextWrapped = true
-    Instance.new("UICorner", note).CornerRadius = UDim.new(0, 6)
-    o = o + 1
 end
 
--- ============ GUN PAGE ============
 do
-    local page = tabPages["Gun"]
-    local o = 0
+    local page = tabPages["Gun"]; local o = 0
     sectionOn(page, "Gun Teleport", o); o = o + 1
     buttonOn(page, "Teleport to Gun", Color3.fromRGB(60, 60, 110), o, teleportToGun); o = o + 1
     toggleOn(page, "Auto-TP to Gun", CFG.gunTP.enabled, Color3.fromRGB(90, 90, 200), o, function(v)
@@ -934,10 +872,8 @@ do
     end); o = o + 1
 end
 
--- ============ ROLES PAGE ============
 do
-    local page = tabPages["Roles"]
-    local o = 0
+    local page = tabPages["Roles"]; local o = 0
     sectionOn(page, "Role Preference (next round)", o); o = o + 1
     local roleBtns = {}
     local function roleBtn(label, role, color)
@@ -969,26 +905,10 @@ do
     roleBtn("Murderer", "Murderer", COLORS.Murderer)
     roleBtn("Sheriff", "Sheriff", COLORS.Sheriff)
     roleBtns[1].BackgroundTransparency = 0.05
-    sectionOn(page, "Note", o); o = o + 1
-    local note = Instance.new("TextLabel", page)
-    note.Size = UDim2.new(1, 0, 0, 60)
-    note.BackgroundColor3 = Color3.fromRGB(19, 19, 27)
-    note.BackgroundTransparency = 0.3
-    note.BorderSizePixel = 0
-    note.LayoutOrder = o
-    note.Text = "Fires role-assign remotes at round start. Works on some servers, ignored on others."
-    note.TextColor3 = Color3.fromRGB(130, 130, 160)
-    note.Font = Enum.Font.Gotham
-    note.TextSize = 10
-    note.TextWrapped = true
-    Instance.new("UICorner", note).CornerRadius = UDim.new(0, 6)
-    o = o + 1
 end
 
--- ============ MISC PAGE ============
 do
-    local page = tabPages["Misc"]
-    local o = 0
+    local page = tabPages["Misc"]; local o = 0
     sectionOn(page, "Player", o); o = o + 1
     toggleOn(page, "Invisibility (proper)", false, Color3.fromRGB(175,75,255), o, function(v)
         setInvisible(v)
@@ -1036,17 +956,16 @@ end)
 
 Players.PlayerRemoving:Connect(function(p) removeESP(p) end)
 
-print("[N3xt-MM2 v4.0] loaded (tabbed UI)") (assist aim)")
+print("[N3xt-MM2 v4.0] loaded (tabbed UI)")
 ]==]
 
 -- ============================================================
---  RIVALS SOURCE — stub (send word for body)
+--  RIVALS SOURCE — stub (fill in later, separate file planned)
 -- ============================================================
 local RIVALS_SOURCE = [==[
 -- PASTE RIVALS v10.1 SOURCE HERE
 ]==]
 
--- (Launcher UI continues in next message — do not paste until you have Part 2)
 -- ============================================================
 --  LAUNCHER UTILITY
 -- ============================================================
@@ -1076,32 +995,27 @@ end
 
 local function BuildGrid(parent, w, h)
     local grid = Make("Frame", {
-        Size = UDim2.fromOffset(w, h),
-        BackgroundTransparency = 1, ClipsDescendants = true,
-        ZIndex = 0, Parent = parent,
+        Size = UDim2.fromOffset(w, h), BackgroundTransparency = 1,
+        ClipsDescendants = true, ZIndex = 0, Parent = parent,
     })
     local d = CFG.GRID_DENSITY
     for x = 0, math.floor(w / d) do
-        Make("Frame", {
-            Size = UDim2.new(0, 1, 1, 0), Position = UDim2.fromOffset(x * d, 0),
+        Make("Frame", { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.fromOffset(x * d, 0),
             BackgroundColor3 = THEME.GRID_LINE, BackgroundTransparency = 0.82,
-            BorderSizePixel = 0, ZIndex = 0, Parent = grid,
-        })
+            BorderSizePixel = 0, ZIndex = 0, Parent = grid })
     end
     for y = 0, math.floor(h / d) do
-        Make("Frame", {
-            Size = UDim2.new(1, 0, 0, 1), Position = UDim2.fromOffset(0, y * d),
+        Make("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.fromOffset(0, y * d),
             BackgroundColor3 = THEME.GRID_LINE, BackgroundTransparency = 0.82,
-            BorderSizePixel = 0, ZIndex = 0, Parent = grid,
-        })
+            BorderSizePixel = 0, ZIndex = 0, Parent = grid })
     end
     return grid
 end
 
+-- [continues in BLOCK 2]
 local function BuildSplash(parent)
     local splash = Make("Frame", {
-        Size = UDim2.fromScale(1, 1),
-        BackgroundColor3 = THEME.BG_DEEP,
+        Size = UDim2.fromScale(1, 1), BackgroundColor3 = THEME.BG_DEEP,
         BorderSizePixel = 0, ZIndex = 100, Parent = parent,
     })
     BuildGrid(splash, 1920, 1080)
@@ -1120,7 +1034,7 @@ local function BuildSplash(parent)
     local tag = Make("TextLabel", {
         Position = UDim2.new(0, 0, 0, 82), Size = UDim2.new(1, 0, 0, 20),
         BackgroundTransparency = 1, Font = Enum.Font.Gotham,
-        Text = "n3xt launcher · v7.5", TextColor3 = THEME.ACCENT,
+        Text = "n3xt launcher · v7.6", TextColor3 = THEME.ACCENT,
         TextSize = 13, TextTransparency = 1, ZIndex = 102, Parent = holder,
     })
     TweenService:Create(logo, TweenInfo.new(0.7, Enum.EasingStyle.Quad), {TextTransparency = 0}):Play()
@@ -1165,9 +1079,9 @@ end
 
 local function MakeToggle(parent, label, getFn, setFn, order, onChange, refresh)
     local row = Make("Frame", {
-        Size = UDim2.new(1, 0, 0, 32),
-        BackgroundColor3 = THEME.BTN_BG, BackgroundTransparency = 0.15,
-        BorderSizePixel = 0, LayoutOrder = order, Parent = parent,
+        Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = THEME.BTN_BG,
+        BackgroundTransparency = 0.15, BorderSizePixel = 0,
+        LayoutOrder = order, Parent = parent,
     })
     Make("UICorner", {CornerRadius = UDim.new(0, 8)}, {Parent = row})
     Make("TextLabel", {
@@ -1186,7 +1100,8 @@ local function MakeToggle(parent, label, getFn, setFn, order, onChange, refresh)
     local knob = Make("Frame", {
         Size = UDim2.fromOffset(12, 12),
         Position = getFn() and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3),
-        BackgroundColor3 = Color3.fromRGB(240, 240, 255), BorderSizePixel = 0, Parent = pill,
+        BackgroundColor3 = Color3.fromRGB(240, 240, 255),
+        BorderSizePixel = 0, Parent = pill,
     })
     Make("UICorner", {CornerRadius = UDim.new(1, 0)}, {Parent = knob})
     local btn = Make("TextButton", {
@@ -1207,11 +1122,11 @@ end
 
 local function MakeButton(parent, label, color, order, cb)
     local btn = Make("TextButton", {
-        Size = UDim2.new(1, 0, 0, 30),
-        BackgroundColor3 = color or THEME.BTN_ACTIVE, BackgroundTransparency = 0.05,
-        BorderSizePixel = 0, LayoutOrder = order, Text = label,
-        TextColor3 = THEME.TEXT, Font = Enum.Font.GothamBold,
-        TextSize = 12, AutoButtonColor = true, Parent = parent,
+        Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = color or THEME.BTN_ACTIVE,
+        BackgroundTransparency = 0.05, BorderSizePixel = 0,
+        LayoutOrder = order, Text = label, TextColor3 = THEME.TEXT,
+        Font = Enum.Font.GothamBold, TextSize = 12,
+        AutoButtonColor = true, Parent = parent,
     })
     Make("UICorner", {CornerRadius = UDim.new(0, 8)}, {Parent = btn})
     btn.MouseButton1Click:Connect(cb)
@@ -1219,9 +1134,9 @@ end
 
 local function MakeSlider(parent, label, minV, maxV, default, order, cb)
     local row = Make("Frame", {
-        Size = UDim2.new(1, 0, 0, 46),
-        BackgroundColor3 = THEME.BTN_BG, BackgroundTransparency = 0.15,
-        BorderSizePixel = 0, LayoutOrder = order, Parent = parent,
+        Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = THEME.BTN_BG,
+        BackgroundTransparency = 0.15, BorderSizePixel = 0,
+        LayoutOrder = order, Parent = parent,
     })
     Make("UICorner", {CornerRadius = UDim.new(0, 8)}, {Parent = row})
     Make("TextLabel", {
@@ -1232,8 +1147,8 @@ local function MakeSlider(parent, label, minV, maxV, default, order, cb)
     })
     local val = Make("TextLabel", {
         Size = UDim2.new(0.35, -12, 0, 22), Position = UDim2.new(0.65, 0, 0, 4),
-        BackgroundTransparency = 1, Font = Enum.Font.GothamBold, Text = tostring(default),
-        TextColor3 = THEME.ACCENT, TextSize = 11,
+        BackgroundTransparency = 1, Font = Enum.Font.GothamBold,
+        Text = tostring(default), TextColor3 = THEME.ACCENT, TextSize = 11,
         TextXAlignment = Enum.TextXAlignment.Right, Parent = row,
     })
     local track = Make("Frame", {
@@ -1332,7 +1247,7 @@ local function espUpdate()
 end
 
 -- ============================================================
---  LAUNCHER AIMBOT (camera hook)
+--  LAUNCHER AIMBOT
 -- ============================================================
 local function aimbotInstallHook()
     if State.AIM.hookInstalled then return end
@@ -1639,8 +1554,7 @@ local function BuildMenu(parent)
     local W, H = 640, 460
     local main = Make("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.fromOffset(W, H),
-        BackgroundColor3 = THEME.BG_DEEP,
+        Size = UDim2.fromOffset(W, H), BackgroundColor3 = THEME.BG_DEEP,
         BorderSizePixel = 0, Parent = parent,
     })
     Make("UICorner", {CornerRadius = UDim.new(0, 14)}, {Parent = main})
@@ -1648,9 +1562,8 @@ local function BuildMenu(parent)
     BuildGrid(main, W, H)
 
     local bar = Make("Frame", {
-        Size = UDim2.new(1, 0, 0, 40),
-        BackgroundColor3 = THEME.BG_BAR, BackgroundTransparency = 0.1,
-        BorderSizePixel = 0, ZIndex = 3, Parent = main,
+        Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = THEME.BG_BAR,
+        BackgroundTransparency = 0.1, BorderSizePixel = 0, ZIndex = 3, Parent = main,
     })
     Make("UICorner", {CornerRadius = UDim.new(0, 14)}, {Parent = bar})
     Make("Frame", {
@@ -1688,12 +1601,10 @@ local function BuildMenu(parent)
 
     local tabNames = {"Executor","Scripts","Settings"}
     local tabButtons, tabPages = {}, {}
-
     local contentArea = Make("Frame", {
         Position = UDim2.new(0, 0, 0, 40), Size = UDim2.new(1, 0, 1, -80),
         BackgroundTransparency = 1, ZIndex = 2, Parent = main,
     })
-
     local codePane = Make("Frame", {
         Position = UDim2.fromOffset(14, 14),
         Size = UDim2.new(0.52, -20, 1, -28),
@@ -1726,8 +1637,7 @@ local function BuildMenu(parent)
         Position = UDim2.fromOffset(38, 34), Size = UDim2.new(1, -50, 1, -44),
         BackgroundTransparency = 1, Font = Enum.Font.Code,
         Text = "", TextColor3 = THEME.TEXT, TextSize = 12,
-        RichText = true,
-        TextXAlignment = Enum.TextXAlignment.Left,
+        RichText = true, TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top,
         ZIndex = 3, Parent = codePane,
     })
@@ -1735,8 +1645,7 @@ local function BuildMenu(parent)
         AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6),
         Size = UDim2.new(1, -16, 0, 16), BackgroundTransparency = 1,
         Font = Enum.Font.Gotham, Text = "read-only preview",
-        TextColor3 = THEME.TEXT_FAINT, TextSize = 10,
-        ZIndex = 3, Parent = codePane,
+        TextColor3 = THEME.TEXT_FAINT, TextSize = 10, ZIndex = 3, Parent = codePane,
     })
     previewRefresh = function()
         local body, numsText = buildPreview()
@@ -1776,8 +1685,7 @@ local function BuildMenu(parent)
             BackgroundColor3 = i == 1 and THEME.ACCENT or Color3.fromRGB(30, 26, 46),
             BackgroundTransparency = i == 1 and 0 or 0.1,
             BorderSizePixel = 0, Font = Enum.Font.GothamMedium,
-            Text = name,
-            TextColor3 = i == 1 and THEME.BG_DEEP or THEME.TEXT_DIM,
+            Text = name, TextColor3 = i == 1 and THEME.BG_DEEP or THEME.TEXT_DIM,
             TextSize = 12, LayoutOrder = i, ZIndex = 5, Parent = tabsRow,
         })
         Make("UICorner", {CornerRadius = UDim.new(1, 0)}, {Parent = btn})
@@ -1805,7 +1713,6 @@ local function BuildMenu(parent)
     local exec = tabPages["Executor"]
     local order = 0
     local function O() order += 1; return order end
-
     MakeSectionLabel(exec, "Movement", O())
     MakeToggle(exec, "Infinite Jump", function() return CFG.INF_JUMP end,
         function(v) CFG.INF_JUMP = v end, O(), nil, previewRefresh)
@@ -1862,8 +1769,6 @@ local function BuildMenu(parent)
         function(v) CFG.AIMBOT_LOCK_STATE = v end, O(), nil, previewRefresh)
     MakeToggle(exec, "Team Check", function() return CFG.AIMBOT_TEAM_CHECK end,
         function(v) CFG.AIMBOT_TEAM_CHECK = v end, O(), nil, previewRefresh)
-    MakeToggle(exec, "Wall Check", function() return CFG.AIMBOT_WALLCHECK end,
-        function(v) CFG.AIMBOT_WALLCHECK = v end, O(), nil, previewRefresh)
     MakeToggle(exec, "Camera Bypass", function() return CFG.AIMBOT_BYPASS end,
         function(v) CFG.AIMBOT_BYPASS = v; if not v then aimbotUninstallHook() end end, O(), nil, previewRefresh)
     MakeToggle(exec, "Mouse Assist", function() return CFG.AIMBOT_MOUSELOCK end,
@@ -1974,8 +1879,7 @@ local function BuildMenu(parent)
     MakeSectionLabel(settings, "Diagnostics", PO())
     Make("TextLabel", {
         Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = THEME.BTN_BG,
-        BackgroundTransparency = 0.15, BorderSizePixel = 0,
-        Font = Enum.Font.Gotham,
+        BackgroundTransparency = 0.15, BorderSizePixel = 0, Font = Enum.Font.Gotham,
         Text = "Drawing: " .. (HAS_DRAWING and "available" or "MISSING"),
         TextColor3 = HAS_DRAWING and THEME.READY_GREEN or Color3.fromRGB(230, 100, 100),
         TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
@@ -1983,8 +1887,7 @@ local function BuildMenu(parent)
     })
     Make("TextLabel", {
         Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = THEME.BTN_BG,
-        BackgroundTransparency = 0.15, BorderSizePixel = 0,
-        Font = Enum.Font.Gotham,
+        BackgroundTransparency = 0.15, BorderSizePixel = 0, Font = Enum.Font.Gotham,
         Text = "loadstring: " .. (HAS_LOADSTRING and "available" or "MISSING"),
         TextColor3 = HAS_LOADSTRING and THEME.READY_GREEN or Color3.fromRGB(230, 100, 100),
         TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
@@ -1992,8 +1895,7 @@ local function BuildMenu(parent)
     })
     Make("TextLabel", {
         Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = THEME.BTN_BG,
-        BackgroundTransparency = 0.15, BorderSizePixel = 0,
-        Font = Enum.Font.Gotham,
+        BackgroundTransparency = 0.15, BorderSizePixel = 0, Font = Enum.Font.Gotham,
         Text = "MM2 source: " .. (#MM2_SOURCE < 100 and "empty stub" or "loaded"),
         TextColor3 = #MM2_SOURCE < 100 and Color3.fromRGB(230, 100, 100) or THEME.READY_GREEN,
         TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
@@ -2001,8 +1903,7 @@ local function BuildMenu(parent)
     })
     Make("TextLabel", {
         Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = THEME.BTN_BG,
-        BackgroundTransparency = 0.15, BorderSizePixel = 0,
-        Font = Enum.Font.Gotham,
+        BackgroundTransparency = 0.15, BorderSizePixel = 0, Font = Enum.Font.Gotham,
         Text = "Rivals source: " .. (#RIVALS_SOURCE < 100 and "empty stub" or "loaded"),
         TextColor3 = #RIVALS_SOURCE < 100 and Color3.fromRGB(230, 100, 100) or THEME.READY_GREEN,
         TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
@@ -2011,16 +1912,13 @@ local function BuildMenu(parent)
 
     MakeSectionLabel(settings, "Keybinds", PO())
     for _, row in ipairs({
-        {"Hard Lock", "E"},
-        {"Infinite Jump", "Space"},
-        {"Fly", "WASD + Space / LCtrl"},
-        {"Ctrl+Click TP", "Ctrl + LMB"},
+        {"Hard Lock", "E"}, {"Infinite Jump", "Space"},
+        {"Fly", "WASD + Space / LCtrl"}, {"Ctrl+Click TP", "Ctrl + LMB"},
     }) do
         Make("TextLabel", {
             Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = THEME.BTN_BG,
-            BackgroundTransparency = 0.15, BorderSizePixel = 0,
-            Font = Enum.Font.Gotham, Text = row[1] .. ":  " .. row[2],
-            TextColor3 = THEME.TEXT, TextSize = 12,
+            BackgroundTransparency = 0.15, BorderSizePixel = 0, Font = Enum.Font.Gotham,
+            Text = row[1] .. ":  " .. row[2], TextColor3 = THEME.TEXT, TextSize = 12,
             TextXAlignment = Enum.TextXAlignment.Left,
             LayoutOrder = PO(), Parent = settings,
         })
@@ -2029,9 +1927,8 @@ local function BuildMenu(parent)
     MakeSectionLabel(settings, "About", PO())
     Make("TextLabel", {
         Size = UDim2.new(1, 0, 0, 60), BackgroundColor3 = THEME.BTN_BG,
-        BackgroundTransparency = 0.15, BorderSizePixel = 0,
-        Font = Enum.Font.Gotham,
-        Text = "N3xt launcher v7.5\nloaded for " .. LocalPlayer.Name,
+        BackgroundTransparency = 0.15, BorderSizePixel = 0, Font = Enum.Font.Gotham,
+        Text = "N3xt launcher v7.6\nloaded for " .. LocalPlayer.Name,
         TextColor3 = THEME.TEXT_DIM, TextSize = 11,
         TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
         LayoutOrder = PO(), Parent = settings,
@@ -2107,9 +2004,7 @@ local function OnCharacter(char)
             State.Humanoid.UseJumpPower = true
             State.Humanoid.JumpPower = CFG.JUMP_POWER
         end)
-        if CFG.ETC_INVINCIBLE then
-            task.wait(0.4); setInvincible(true)
-        end
+        if CFG.ETC_INVINCIBLE then task.wait(0.4); setInvincible(true) end
     end
 end
 local function ApplyNoclip()
@@ -2204,5 +2099,5 @@ RunService.Heartbeat:Connect(function(dt)
     tickInvincible()
 end)
 
-Notify("N3xt", "Launcher v7.5 loaded")
-print("[N3xt launcher v7.5] ready")
+Notify("N3xt", "Launcher v7.6 loaded")
+print("[N3xt launcher v7.6] ready")
