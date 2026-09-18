@@ -599,7 +599,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ===== MM2 UI =====
+-- ===== MM2 UI (tabbed) =====
 local pg = LocalPlayer:WaitForChild("PlayerGui")
 local old = pg:FindFirstChild("MM2_Hub"); if old then old:Destroy() end
 local sg = Instance.new("ScreenGui")
@@ -607,8 +607,8 @@ sg.Name = "MM2_Hub"; sg.ResetOnSpawn = false; sg.IgnoreGuiInset = true
 sg.Parent = pg
 
 local main = Instance.new("Frame", sg)
-main.Size = UDim2.new(0, 248, 0, 760)
-main.Position = UDim2.new(1, -263, 0.5, -380)
+main.Size = UDim2.new(0, 260, 0, 520)
+main.Position = UDim2.new(1, -275, 0.5, -260)
 main.BackgroundColor3 = Color3.fromRGB(11, 11, 16)
 main.BackgroundTransparency = 0.06
 main.BorderSizePixel = 0
@@ -617,6 +617,7 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0, 13)
 local stroke = Instance.new("UIStroke", main)
 stroke.Color = Color3.fromRGB(55, 55, 80); stroke.Thickness = 1
 
+-- title bar
 local titleBar = Instance.new("Frame", main)
 titleBar.Size = UDim2.new(1, 0, 0, 42)
 titleBar.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
@@ -655,44 +656,114 @@ minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 16
 minBtn.BorderSizePixel = 0
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 7)
 
-local scroll = Instance.new("ScrollingFrame", main)
-scroll.Size = UDim2.new(1, -10, 1, -50)
-scroll.Position = UDim2.new(0, 5, 0, 46)
-scroll.BackgroundTransparency = 1
-scroll.ScrollBarThickness = 2
-scroll.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 110)
-scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0, 5); layout.SortOrder = Enum.SortOrder.LayoutOrder
-local pad = Instance.new("UIPadding", scroll)
-pad.PaddingTop = UDim.new(0, 4); pad.PaddingBottom = UDim.new(0, 12)
+-- tab bar
+local tabBar = Instance.new("Frame", main)
+tabBar.Size = UDim2.new(1, 0, 0, 32)
+tabBar.Position = UDim2.new(0, 0, 0, 42)
+tabBar.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+tabBar.BorderSizePixel = 0
+local tabLayout = Instance.new("UIListLayout", tabBar)
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Padding = UDim.new(0, 2)
+tabLayout.Parent = tabBar
 
-local function section(text, order)
-    local f = Instance.new("Frame", scroll)
-    f.Size = UDim2.new(1, 0, 0, 24); f.BackgroundTransparency = 1
-    f.LayoutOrder = order
-    local l = Instance.new("TextLabel", f)
-    l.Size = UDim2.new(1, 0, 1, 0); l.BackgroundTransparency = 1
-    l.Text = text:upper(); l.TextColor3 = Color3.fromRGB(110, 110, 160)
-    l.Font = Enum.Font.GothamBold; l.TextSize = 10
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    local div = Instance.new("Frame", f)
-    div.Size = UDim2.new(1, 0, 0, 1); div.Position = UDim2.new(0, 0, 1, -1)
-    div.BackgroundColor3 = Color3.fromRGB(35, 35, 55); div.BorderSizePixel = 0
+local TABS = {"ESP", "Aim", "Kill", "Gun", "Roles", "Misc"}
+local tabButtons = {}
+local tabPages = {}
+
+local contentHolder = Instance.new("Frame", main)
+contentHolder.Size = UDim2.new(1, 0, 1, -74 - 32)
+contentHolder.Position = UDim2.new(0, 0, 0, 74)
+contentHolder.BackgroundTransparency = 1
+contentHolder.ClipsDescendants = true
+
+-- create pages
+for i, name in ipairs(TABS) do
+    local btn = Instance.new("TextButton", tabBar)
+    btn.Size = UDim2.new(1/#TABS, -2, 1, 0)
+    btn.LayoutOrder = i
+    btn.BackgroundColor3 = i == 1 and Color3.fromRGB(80, 45, 170) or Color3.fromRGB(24, 24, 34)
+    btn.Text = name
+    btn.TextColor3 = i == 1 and Color3.fromRGB(235, 235, 255) or Color3.fromRGB(140, 140, 175)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.BorderSizePixel = 0
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    tabButtons[name] = btn
+
+    local page = Instance.new("ScrollingFrame", contentHolder)
+    page.Size = UDim2.fromScale(1, 1)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 2
+    page.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 110)
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.Visible = (i == 1)
+    local lp = Instance.new("UIListLayout", page)
+    lp.Padding = UDim.new(0, 5)
+    lp.SortOrder = Enum.SortOrder.LayoutOrder
+    local pp = Instance.new("UIPadding", page)
+    pp.PaddingTop = UDim.new(0, 8)
+    pp.PaddingBottom = UDim.new(0, 10)
+    pp.PaddingLeft = UDim.new(0, 8)
+    pp.PaddingRight = UDim.new(0, 8)
+    tabPages[name] = page
 end
 
-local function toggle(label, default, accent, order, cb)
-    local row = Instance.new("Frame", scroll)
-    row.Size = UDim2.new(1, 0, 0, 36)
+-- tab switching
+local function selectTab(name)
+    for i, n in ipairs(TABS) do
+        local on = n == name
+        local b = tabButtons[n]
+        TweenService:Create(b, TweenInfo.new(0.15), {
+            BackgroundColor3 = on and Color3.fromRGB(80, 45, 170) or Color3.fromRGB(24, 24, 34),
+        }):Play()
+        b.TextColor3 = on and Color3.fromRGB(235, 235, 255) or Color3.fromRGB(140, 140, 175)
+        tabPages[n].Visible = on
+    end
+end
+for name, btn in pairs(tabButtons) do
+    btn.MouseButton1Click:Connect(function() selectTab(name) end)
+end
+
+-- widget factories — take a page as first argument now
+local function sectionOn(page, text, order)
+    local f = Instance.new("Frame", page)
+    f.Size = UDim2.new(1, 0, 0, 22)
+    f.BackgroundTransparency = 1
+    f.LayoutOrder = order
+    local l = Instance.new("TextLabel", f)
+    l.Size = UDim2.new(1, 0, 1, 0)
+    l.BackgroundTransparency = 1
+    l.Text = text:upper()
+    l.TextColor3 = Color3.fromRGB(110, 110, 160)
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = 10
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    local div = Instance.new("Frame", f)
+    div.Size = UDim2.new(1, 0, 0, 1)
+    div.Position = UDim2.new(0, 0, 1, -1)
+    div.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+    div.BorderSizePixel = 0
+end
+
+local function toggleOn(page, label, default, accent, order, cb)
+    local row = Instance.new("Frame", page)
+    row.Size = UDim2.new(1, 0, 0, 34)
     row.BackgroundColor3 = Color3.fromRGB(19, 19, 27)
-    row.BorderSizePixel = 0; row.LayoutOrder = order
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
     local lbl = Instance.new("TextLabel", row)
-    lbl.Size = UDim2.new(1, -60, 1, 0); lbl.Position = UDim2.new(0, 12, 0, 0)
-    lbl.BackgroundTransparency = 1; lbl.Text = label
+    lbl.Size = UDim2.new(1, -60, 1, 0)
+    lbl.Position = UDim2.new(0, 12, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
     lbl.TextColor3 = Color3.fromRGB(218, 218, 235)
-    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 12
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     local pill = Instance.new("Frame", row)
     pill.Size = UDim2.new(0, 38, 0, 20)
@@ -703,12 +774,14 @@ local function toggle(label, default, accent, order, cb)
     local knob = Instance.new("Frame", pill)
     knob.Size = UDim2.new(0, 14, 0, 14)
     knob.Position = default and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7)
-    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255); knob.BorderSizePixel = 0
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.BorderSizePixel = 0
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
     local state = default
     local btn = Instance.new("TextButton", row)
     btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1; btn.Text = ""
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
     btn.MouseButton1Click:Connect(function()
         state = not state
         TweenService:Create(pill, TweenInfo.new(0.18), {BackgroundColor3 = state and accent or Color3.fromRGB(45,45,62)}):Play()
@@ -717,29 +790,34 @@ local function toggle(label, default, accent, order, cb)
     end)
 end
 
-local function slider(label, minV, maxV, default, order, cb)
-    local row = Instance.new("Frame", scroll)
-    row.Size = UDim2.new(1, 0, 0, 54)
+local function sliderOn(page, label, minV, maxV, default, order, cb)
+    local row = Instance.new("Frame", page)
+    row.Size = UDim2.new(1, 0, 0, 50)
     row.BackgroundColor3 = Color3.fromRGB(19, 19, 27)
-    row.BorderSizePixel = 0; row.LayoutOrder = order
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
     local lbl = Instance.new("TextLabel", row)
-    lbl.Size = UDim2.new(0.72, 0, 0, 26)
+    lbl.Size = UDim2.new(0.72, 0, 0, 24)
     lbl.Position = UDim2.new(0, 12, 0, 4)
-    lbl.BackgroundTransparency = 1; lbl.Text = label
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
     lbl.TextColor3 = Color3.fromRGB(218, 218, 235)
-    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 11
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 11
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     local val = Instance.new("TextLabel", row)
-    val.Size = UDim2.new(0.28, -12, 0, 26)
+    val.Size = UDim2.new(0.28, -12, 0, 24)
     val.Position = UDim2.new(0.72, 0, 0, 4)
-    val.BackgroundTransparency = 1; val.Text = tostring(default)
+    val.BackgroundTransparency = 1
+    val.Text = tostring(default)
     val.TextColor3 = Color3.fromRGB(130, 130, 210)
-    val.Font = Enum.Font.GothamBold; val.TextSize = 11
+    val.Font = Enum.Font.GothamBold
+    val.TextSize = 11
     val.TextXAlignment = Enum.TextXAlignment.Right
     local track = Instance.new("Frame", row)
     track.Size = UDim2.new(1, -24, 0, 4)
-    track.Position = UDim2.new(0, 12, 0, 38)
+    track.Position = UDim2.new(0, 12, 0, 36)
     track.BackgroundColor3 = Color3.fromRGB(38, 38, 58)
     track.BorderSizePixel = 0
     Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
@@ -751,7 +829,8 @@ local function slider(label, minV, maxV, default, order, cb)
     local grab = Instance.new("TextButton", track)
     grab.Size = UDim2.new(1, 0, 0, 22)
     grab.Position = UDim2.new(0, 0, 0.5, -11)
-    grab.BackgroundTransparency = 1; grab.Text = ""
+    grab.BackgroundTransparency = 1
+    grab.Text = ""
     local dragging = false
     grab.MouseButton1Down:Connect(function() dragging = true end)
     UserInputService.InputEnded:Connect(function(i)
@@ -761,105 +840,175 @@ local function slider(label, minV, maxV, default, order, cb)
         if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
             local r = math.clamp((i.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
             local v = math.floor(minV + r * (maxV - minV))
-            fill.Size = UDim2.new(r, 0, 1, 0); val.Text = tostring(v); cb(v)
+            fill.Size = UDim2.new(r, 0, 1, 0)
+            val.Text = tostring(v)
+            cb(v)
         end
     end)
 end
 
-local function button(label, accent, order, cb)
-    local btn = Instance.new("TextButton", scroll)
-    btn.Size = UDim2.new(1, 0, 0, 36)
+local function buttonOn(page, label, accent, order, cb)
+    local btn = Instance.new("TextButton", page)
+    btn.Size = UDim2.new(1, 0, 0, 32)
     btn.BackgroundColor3 = accent or Color3.fromRGB(30, 30, 46)
-    btn.BorderSizePixel = 0; btn.LayoutOrder = order
-    btn.Text = label; btn.TextColor3 = Color3.fromRGB(235, 235, 255)
-    btn.Font = Enum.Font.GothamBold; btn.TextSize = 12
+    btn.BorderSizePixel = 0
+    btn.LayoutOrder = order
+    btn.Text = label
+    btn.TextColor3 = Color3.fromRGB(235, 235, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
     btn.AutoButtonColor = true
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
     btn.MouseButton1Click:Connect(cb)
 end
 
-local o = 0
-section("ESP", o); o = o + 1
-toggle("Show Murderer",  CFG.esp.Murderer, COLORS.Murderer, o, function(v) CFG.esp.Murderer = v end); o = o + 1
-toggle("Show Sheriff",   CFG.esp.Sheriff,  COLORS.Sheriff,  o, function(v) CFG.esp.Sheriff  = v end); o = o + 1
-toggle("Show Innocents", CFG.esp.Innocent, COLORS.Innocent, o, function(v) CFG.esp.Innocent = v end); o = o + 1
-
-section("AIM ASSIST", o); o = o + 1
-toggle("Aim Assist (nudge, not lock)", CFG.aimbot.enabled, Color3.fromRGB(255,180,50), o, function(v)
-    CFG.aimbot.enabled = v
-    if v then buildFOVCircle() end
-end); o = o + 1
-toggle("FOV Circle", CFG.aimbot.showFOV, Color3.fromRGB(180,180,255), o, function(v)
-    CFG.aimbot.showFOV = v
-end); o = o + 1
-slider("FOV radius (px)", 30, 400, CFG.aimbot.fov, o, function(v)
-    CFG.aimbot.fov = v
-    if fovCircle then fovCircle.Radius = v end
-end); o = o + 1
-slider("Strength", 1, 40, 5, o, function(v) CFG.aimbot.strength = v / 100 end); o = o + 1
-
-section("ROLE PREFERENCE (next round)", o); o = o + 1
-local roleBtns = {}
-local function roleBtn(label, role, color)
-    local btn = Instance.new("TextButton", scroll)
-    btn.Size = UDim2.new(1, 0, 0, 34)
-    btn.BackgroundColor3 = role == nil and Color3.fromRGB(100,100,140) or color
-    btn.BackgroundTransparency = 0.15
-    btn.BorderSizePixel = 0; btn.LayoutOrder = o
-    btn.Text = label; btn.TextColor3 = Color3.fromRGB(235, 235, 240)
-    btn.Font = Enum.Font.GothamBold; btn.TextSize = 12
-    btn.AutoButtonColor = true
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-    o = o + 1
-    btn.MouseButton1Click:Connect(function()
-        CFG.rolePreference = role
-        if role then
-            blastRoleRemotes(role)
-            directWriteRole(role)
-        end
-        for _, b in ipairs(roleBtns) do b.BackgroundTransparency = 0.5 end
-        btn.BackgroundTransparency = 0.05
-    end)
-    table.insert(roleBtns, btn)
+-- ============ ESP PAGE ============
+do
+    local page = tabPages["ESP"]
+    local o = 0
+    sectionOn(page, "ESP Options", o); o = o + 1
+    toggleOn(page, "Show Murderer", CFG.esp.Murderer, COLORS.Murderer, o, function(v) CFG.esp.Murderer = v end); o = o + 1
+    toggleOn(page, "Show Sheriff",  CFG.esp.Sheriff,  COLORS.Sheriff,  o, function(v) CFG.esp.Sheriff  = v end); o = o + 1
+    toggleOn(page, "Show Innocents",CFG.esp.Innocent, COLORS.Innocent, o, function(v) CFG.esp.Innocent = v end); o = o + 1
 end
-roleBtn("Random (normal)", nil, Color3.fromRGB(100,100,140))
-roleBtn("Murderer",        "Murderer", COLORS.Murderer)
-roleBtn("Sheriff",         "Sheriff",  COLORS.Sheriff)
-roleBtns[1].BackgroundTransparency = 0.05
 
-section("KILL (server-gated)", o); o = o + 1
-button("Kill Murderer (instant)", COLORS.Murderer, o, function() _G.N3xtMM2_KillMurderer() end); o = o + 1
-button("Kill Sheriff (instant)", COLORS.Sheriff, o, function() _G.N3xtMM2_KillSheriff() end); o = o + 1
-toggle("Purge Innocents (1 per 2s)", false, COLORS.Innocent, o, function(v)
-    CFG.kill.purgeInnocents = v; CFG.kill.lastPurge = 0
-end); o = o + 1
+-- ============ AIM PAGE ============
+do
+    local page = tabPages["Aim"]
+    local o = 0
+    sectionOn(page, "Assist", o); o = o + 1
+    toggleOn(page, "Aim Assist", CFG.aimbot.enabled, Color3.fromRGB(255,180,50), o, function(v)
+        CFG.aimbot.enabled = v
+        if v then buildFOVCircle() end
+    end); o = o + 1
+    toggleOn(page, "FOV Circle", CFG.aimbot.showFOV, Color3.fromRGB(180,180,255), o, function(v)
+        CFG.aimbot.showFOV = v
+    end); o = o + 1
+    sliderOn(page, "FOV radius", 30, 400, CFG.aimbot.fov, o, function(v)
+        CFG.aimbot.fov = v
+        if fovCircle then fovCircle.Radius = v end
+    end); o = o + 1
+    sliderOn(page, "Strength", 1, 40, 5, o, function(v)
+        CFG.aimbot.strength = v / 100
+    end); o = o + 1
+end
 
-section("GUN", o); o = o + 1
-button("Teleport to Gun", Color3.fromRGB(60, 60, 110), o, teleportToGun); o = o + 1
-toggle("Auto-TP to Gun", CFG.gunTP.enabled, Color3.fromRGB(90, 90, 200), o, function(v)
-    CFG.gunTP.enabled = v
-end); o = o + 1
-toggle("Auto-Pickup Gun (drop to me)", CFG.gunPickup.enabled, Color3.fromRGB(180, 120, 60), o, function(v)
-    CFG.gunPickup.enabled = v
-end); o = o + 1
+-- ============ KILL PAGE ============
+do
+    local page = tabPages["Kill"]
+    local o = 0
+    sectionOn(page, "Kill Remotes (server-gated)", o); o = o + 1
+    buttonOn(page, "Kill Murderer", COLORS.Murderer, o, function() _G.N3xtMM2_KillMurderer() end); o = o + 1
+    buttonOn(page, "Kill Sheriff", COLORS.Sheriff, o, function() _G.N3xtMM2_KillSheriff() end); o = o + 1
+    toggleOn(page, "Purge Innocents (1 per 2s)", false, COLORS.Innocent, o, function(v)
+        CFG.kill.purgeInnocents = v
+        CFG.kill.lastPurge = 0
+    end); o = o + 1
+    sectionOn(page, "Notes", o); o = o + 1
+    local note = Instance.new("TextLabel", page)
+    note.Size = UDim2.new(1, 0, 0, 60)
+    note.BackgroundColor3 = Color3.fromRGB(19, 19, 27)
+    note.BackgroundTransparency = 0.3
+    note.BorderSizePixel = 0
+    note.LayoutOrder = o
+    note.Text = "Server validates role before applying kills. These buttons only work on loose servers."
+    note.TextColor3 = Color3.fromRGB(130, 130, 160)
+    note.Font = Enum.Font.Gotham
+    note.TextSize = 10
+    note.TextWrapped = true
+    Instance.new("UICorner", note).CornerRadius = UDim.new(0, 6)
+    o = o + 1
+end
 
-section("MISC", o); o = o + 1
-toggle("Invisibility (proper)", false, Color3.fromRGB(175,75,255), o, function(v)
-    setInvisible(v)
-end); o = o + 1
-toggle("Invincible (client)", false, Color3.fromRGB(255,120,120), o, function(v)
-    CFG.invincible = v; setMM2Invincible(v)
-end); o = o + 1
+-- ============ GUN PAGE ============
+do
+    local page = tabPages["Gun"]
+    local o = 0
+    sectionOn(page, "Gun Teleport", o); o = o + 1
+    buttonOn(page, "Teleport to Gun", Color3.fromRGB(60, 60, 110), o, teleportToGun); o = o + 1
+    toggleOn(page, "Auto-TP to Gun", CFG.gunTP.enabled, Color3.fromRGB(90, 90, 200), o, function(v)
+        CFG.gunTP.enabled = v
+    end); o = o + 1
+    toggleOn(page, "Auto-Pickup Gun", CFG.gunPickup.enabled, Color3.fromRGB(180, 120, 60), o, function(v)
+        CFG.gunPickup.enabled = v
+    end); o = o + 1
+end
+
+-- ============ ROLES PAGE ============
+do
+    local page = tabPages["Roles"]
+    local o = 0
+    sectionOn(page, "Role Preference (next round)", o); o = o + 1
+    local roleBtns = {}
+    local function roleBtn(label, role, color)
+        local btn = Instance.new("TextButton", page)
+        btn.Size = UDim2.new(1, 0, 0, 34)
+        btn.BackgroundColor3 = role == nil and Color3.fromRGB(100,100,140) or color
+        btn.BackgroundTransparency = 0.15
+        btn.BorderSizePixel = 0
+        btn.LayoutOrder = o
+        btn.Text = label
+        btn.TextColor3 = Color3.fromRGB(235, 235, 240)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 12
+        btn.AutoButtonColor = true
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+        o = o + 1
+        btn.MouseButton1Click:Connect(function()
+            CFG.rolePreference = role
+            if role then
+                blastRoleRemotes(role)
+                directWriteRole(role)
+            end
+            for _, b in ipairs(roleBtns) do b.BackgroundTransparency = 0.5 end
+            btn.BackgroundTransparency = 0.05
+        end)
+        table.insert(roleBtns, btn)
+    end
+    roleBtn("Random (normal)", nil, Color3.fromRGB(100,100,140))
+    roleBtn("Murderer", "Murderer", COLORS.Murderer)
+    roleBtn("Sheriff", "Sheriff", COLORS.Sheriff)
+    roleBtns[1].BackgroundTransparency = 0.05
+    sectionOn(page, "Note", o); o = o + 1
+    local note = Instance.new("TextLabel", page)
+    note.Size = UDim2.new(1, 0, 0, 60)
+    note.BackgroundColor3 = Color3.fromRGB(19, 19, 27)
+    note.BackgroundTransparency = 0.3
+    note.BorderSizePixel = 0
+    note.LayoutOrder = o
+    note.Text = "Fires role-assign remotes at round start. Works on some servers, ignored on others."
+    note.TextColor3 = Color3.fromRGB(130, 130, 160)
+    note.Font = Enum.Font.Gotham
+    note.TextSize = 10
+    note.TextWrapped = true
+    Instance.new("UICorner", note).CornerRadius = UDim.new(0, 6)
+    o = o + 1
+end
+
+-- ============ MISC PAGE ============
+do
+    local page = tabPages["Misc"]
+    local o = 0
+    sectionOn(page, "Player", o); o = o + 1
+    toggleOn(page, "Invisibility (proper)", false, Color3.fromRGB(175,75,255), o, function(v)
+        setInvisible(v)
+    end); o = o + 1
+    toggleOn(page, "Invincible (client)", CFG.invincible, Color3.fromRGB(255,120,120), o, function(v)
+        CFG.invincible = v
+        setMM2Invincible(v)
+    end); o = o + 1
+end
 
 local collapsed = false
-local fullH = 760
+local fullH = 520
 minBtn.MouseButton1Click:Connect(function()
     collapsed = not collapsed
     minBtn.Text = collapsed and "+" or "-"
     TweenService:Create(main, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
-        Size = UDim2.new(0, 248, 0, collapsed and 42 or fullH)
+        Size = UDim2.new(0, 260, 0, collapsed and 42 or fullH)
     }):Play()
-    scroll.Visible = not collapsed
+    contentHolder.Visible = not collapsed
+    tabBar.Visible = not collapsed
 end)
 
 RunService.RenderStepped:Connect(function()
@@ -887,7 +1036,7 @@ end)
 
 Players.PlayerRemoving:Connect(function(p) removeESP(p) end)
 
-print("[N3xt-MM2 v3.9] loaded (assist aim)")
+print("[N3xt-MM2 v4.0] loaded (tabbed UI)") (assist aim)")
 ]==]
 
 -- ============================================================
