@@ -1,7 +1,7 @@
 --[[
     ╔══════════════════════════════════════════════════╗
-    ║   N3XT  ·  LAUNCHER  v7.4                        ║
-    ║   proper invisibility · invincible toggle · MM2  ║
+    ║   N3XT  ·  LAUNCHER  v7.5                        ║
+    ║   universal hub · MM2 assist · cursor-safe aim   ║
     ╚══════════════════════════════════════════════════╝
 ]]
 
@@ -89,7 +89,7 @@ local State = {
 }
 
 -- ============================================================
---  MM2 SOURCE v3.8 — proper invis, cursor lock, kill buttons
+--  MM2 SOURCE v3.9  (assist aim, working gun TP, role pref)
 -- ============================================================
 local MM2_SOURCE = [==[
 local Players           = game:GetService("Players")
@@ -102,10 +102,11 @@ local LocalPlayer       = Players.LocalPlayer
 
 local CFG = {
     esp = { Murderer = true, Sheriff = true, Innocent = true },
-    aimbot    = { enabled = false, fov = 120, showFOV = true, sens = 1.0, strength = 0.25 },
+    aimbot    = { enabled = false, fov = 120, showFOV = true, strength = 0.05 },
     invis     = false,
     rolePreference = nil,
     gunTP     = { enabled = false, cooldown = 1.5 },
+    gunPickup = { enabled = false },
     kill      = { purgeInnocents = false, lastPurge = 0, purgeInterval = 2.0 },
     invincible = false,
     updateInterval = 0.5,
@@ -132,6 +133,7 @@ local function matchAny(name, pats)
     end
     return false
 end
+
 local function scanTools(c)
     if not c then return nil end
     for _, o in ipairs(c:GetChildren()) do
@@ -142,6 +144,7 @@ local function scanTools(c)
     end
     return nil
 end
+
 local function detectRole(player)
     local char = player.Character
     local bp   = player:FindFirstChild("Backpack")
@@ -164,6 +167,7 @@ local function detectRole(player)
     end
     return "Innocent"
 end
+
 local function getLocalRole() return detectRole(LocalPlayer) end
 local function getMurderer()
     for _, p in ipairs(Players:GetPlayers()) do
@@ -185,7 +189,7 @@ local function getInnocents()
     return list
 end
 
--- KILL ENGINE
+-- KILL ENGINE (server-gated on most MM2 builds; harmless to fire)
 local KILL_REMOTE_NAMES = {
     "KillPlayer","Kill","Damage","DamagePlayer","Stab","Shoot",
     "Hit","Attack","DamageHumanoid","ApplyDamage","KillCharacter",
@@ -225,10 +229,7 @@ local function blastKillRemotes(target)
     for _, obj in ipairs(workspace:GetDescendants()) do tryKillRemote(obj) end
     return fired
 end
-_G.N3xtMM2_Kill = function(p)
-    if not p then return false end
-    return blastKillRemotes(p)
-end
+_G.N3xtMM2_Kill = function(p) if not p then return false end return blastKillRemotes(p) end
 _G.N3xtMM2_KillMurderer = function()
     local m = getMurderer(); if not m then return false end
     return _G.N3xtMM2_Kill(m)
@@ -293,10 +294,8 @@ local function removeESP(player)
     if billboards[player] then billboards[player]:Destroy(); billboards[player] = nil end
 end
 
--- CAMERA-LOCK AIMBOT
+-- ASSIST AIMBOT (no camera hijack — mouse nudge only)
 local fovCircle
-local aimSmooth = 0.4
-
 local function buildFOVCircle()
     if not (typeof(Drawing) == "table") then return end
     if fovCircle then pcall(function() fovCircle:Remove() end) end
@@ -311,47 +310,44 @@ local function buildFOVCircle()
     end)
     if ok then fovCircle = c end
 end
-
 local function inFOV(sp)
     local c = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
     return (sp - c).Magnitude <= CFG.aimbot.fov
 end
-
 local function doAimbot()
     if not CFG.aimbot.enabled      then return end
-    if getLocalRole() ~= "Sheriff" then return end
     local m = getMurderer()
     if not m or not m.Character    then return end
     local head = m.Character:FindFirstChild("Head")
     if not head                    then return end
-
     local sp, onScreen = Camera:WorldToViewportPoint(head.Position)
     if not onScreen                then return end
     if not inFOV(Vector2.new(sp.X, sp.Y)) then return end
 
     local camCF = Camera.CFrame
-    local desired = CFrame.lookAt(camCF.Position, head.Position)
-    local smoothed = camCF:Lerp(desired, 1 - aimSmooth)
+    local worldDir = (head.Position - camCF.Position)
+    if worldDir.Magnitude < 0.001 then return end
+    worldDir = worldDir.Unit
+    if camCF.LookVector:Dot(worldDir) <= 0 then return end
 
-    pcall(function() Camera.CameraType = Enum.CameraType.Scriptable end)
-    Camera.CFrame = smoothed
+    local hA = math.asin(math.clamp(camCF.RightVector:Dot(worldDir), -1, 1))
+    local vA = math.asin(math.clamp(camCF.UpVector:Dot(worldDir),   -1, 1))
+    local ppr = Camera.ViewportSize.X / (2 * math.pi)
+    local strength = CFG.aimbot.strength or 0.05
+    if mousemoverel then
+        pcall(mousemoverel, hA * ppr * strength, -vA * ppr * strength)
+    end
 end
 
--- ============================================================
---  PROPER INVISIBILITY  (root out of world, un-queryable parts)
--- ============================================================
+-- PROPER INVISIBILITY
 local invisActive = false
 local invisLoopConn = nil
 local invisOrigCFrame = nil
 local invisOrigTrans = {}
 local invisOrigLocalMod = {}
-
-local INVIS_REMOTES = {
-    "SetInvisible","Invisible","HidePlayer","PlayerInvis",
-    "SetVisibility","VisibilityChange","HideCharacter",
-    "GhostMode","SetGhost","PlayerGhost","InvisRequest",
-}
-
+local INVIS_REMOTES = {"SetInvisible","Invisible","HidePlayer","PlayerInvis",
+    "SetVisibility","VisibilityChange","HideCharacter","GhostMode","SetGhost",
+    "PlayerGhost","InvisRequest"}
 local function fireInvisRemotes(state)
     local fired = false
     local function tryContainer(container)
@@ -370,27 +366,22 @@ local function fireInvisRemotes(state)
     tryContainer(ReplicatedStorage); tryContainer(workspace)
     return fired
 end
-
 local function invisApplyChar(char)
     if not char then return end
     for _, p in ipairs(char:GetDescendants()) do
         if p:IsA("BasePart") then
             if invisOrigTrans[p] == nil then
-                invisOrigTrans[p]    = p.Transparency
+                invisOrigTrans[p] = p.Transparency
                 invisOrigLocalMod[p] = p.LocalTransparencyModifier
             end
-            p.Transparency              = 1
-            p.LocalTransparencyModifier = 1
-            p.CanCollide                = false
-            p.CanTouch                  = false
-            p.CanQuery                  = false
+            p.Transparency = 1; p.LocalTransparencyModifier = 1
+            p.CanCollide = false; p.CanTouch = false; p.CanQuery = false
         elseif p:IsA("Decal") or p:IsA("Texture") then
             if invisOrigTrans[p] == nil then invisOrigTrans[p] = p.Transparency end
             p.Transparency = 1
         end
     end
 end
-
 local function invisRestoreChar(char)
     if not char then return end
     for inst, t in pairs(invisOrigTrans) do
@@ -401,26 +392,22 @@ local function invisRestoreChar(char)
                     inst.LocalTransparencyModifier = invisOrigLocalMod[inst]
                 end
                 if inst:IsA("BasePart") then
-                    inst.CanCollide = true
-                    inst.CanTouch   = true
-                    inst.CanQuery   = true
+                    inst.CanCollide = true; inst.CanTouch = true; inst.CanQuery = true
                 end
             end
         end)
     end
     invisOrigTrans, invisOrigLocalMod = {}, {}
 end
-
 local function invisStop()
     if invisLoopConn then invisLoopConn:Disconnect(); invisLoopConn = nil end
 end
-
 local function invisStart()
     invisStop()
     invisLoopConn = RunService.RenderStepped:Connect(function()
         if not invisActive then invisStop(); return end
         local char = LocalPlayer.Character
-        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if hrp then
             hrp.CFrame = CFrame.new(hrp.Position.X, -5000, hrp.Position.Z)
             hrp.AssemblyLinearVelocity = Vector3.zero
@@ -428,50 +415,42 @@ local function invisStart()
         if char then invisApplyChar(char) end
     end)
 end
-
 local function setInvisible(state)
     local char = LocalPlayer.Character
     invisActive = state
-
     if state then
         fireInvisRemotes(true)
         if not invisOrigCFrame then invisOrigCFrame = Camera.CFrame end
         pcall(function()
-            Camera.CameraType    = Enum.CameraType.Scriptable
+            Camera.CameraType = Enum.CameraType.Scriptable
             Camera.CameraSubject = nil
         end)
         if char then invisApplyChar(char) end
         invisStart()
     else
-        invisStop()
-        invisActive = false
+        invisStop(); invisActive = false
         pcall(function()
-            Camera.CameraType    = Enum.CameraType.Custom
+            Camera.CameraType = Enum.CameraType.Custom
             Camera.CameraSubject = char and char:FindFirstChildOfClass("Humanoid") or nil
         end)
-        if invisOrigCFrame then
-            Camera.CFrame = invisOrigCFrame
-            invisOrigCFrame = nil
-        end
+        if invisOrigCFrame then Camera.CFrame = invisOrigCFrame; invisOrigCFrame = nil end
         invisRestoreChar(char)
         fireInvisRemotes(false)
     end
 end
-
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.6)
-    invisActive = false
-    invisStop()
+    invisActive = false; invisStop()
     invisOrigTrans, invisOrigLocalMod = {}, {}
     invisOrigCFrame = nil
     pcall(function()
-        Camera.CameraType    = Enum.CameraType.Custom
+        Camera.CameraType = Enum.CameraType.Custom
         Camera.CameraSubject = LocalPlayer.Character
             and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") or nil
     end)
 end)
 
--- MM2 client invincibility (cosmetic)
+-- CLIENT INVINCIBLE (cosmetic)
 local mm2OrigMax = nil
 local function setMM2Invincible(on)
     local char = LocalPlayer.Character
@@ -480,8 +459,7 @@ local function setMM2Invincible(on)
     if on then
         mm2OrigMax = mm2OrigMax or hum.MaxHealth
         pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end)
-        hum.MaxHealth = 1e6
-        hum.Health = 1e6
+        hum.MaxHealth = 1e6; hum.Health = 1e6
     else
         pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true) end)
         if mm2OrigMax then hum.MaxHealth = mm2OrigMax end
@@ -535,16 +513,40 @@ LocalPlayer.CharacterAdded:Connect(function()
     for i = 1, 5 do task.wait(0.3 * i); applyRolePreference() end
 end)
 
--- GUN TP
+-- GUN TELEPORT (fixed — searches full descendants, models, prompts)
 local lastGunTP = 0
 local function findGunTool()
     for _, obj in ipairs(workspace:GetChildren()) do
         if obj:IsA("Tool") and matchAny(obj.Name, GUN_PAT) then return obj end
     end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Tool") and matchAny(obj.Name, GUN_PAT) then return obj end
+        if obj:IsA("Model") and matchAny(obj.Name, GUN_PAT) then
+            for _, child in ipairs(obj:GetChildren()) do
+                if child:IsA("BasePart") then return child end
+            end
+        end
+    end
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
             for _, obj in ipairs(plr.Character:GetChildren()) do
                 if obj:IsA("Tool") and matchAny(obj.Name, GUN_PAT) then return obj end
+            end
+            local bp = plr:FindFirstChild("Backpack")
+            if bp then
+                for _, obj in ipairs(bp:GetChildren()) do
+                    if obj:IsA("Tool") and matchAny(obj.Name, GUN_PAT) then return obj end
+                end
+            end
+        end
+    end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") or obj:IsA("ClickDetector") then
+            local parent = obj.Parent
+            if parent and matchAny(parent.Name, GUN_PAT) then
+                if parent:IsA("BasePart") then return parent end
+                local base = parent:FindFirstChildWhichIsA("BasePart", true)
+                if base then return base end
             end
         end
     end
@@ -553,19 +555,37 @@ end
 local function teleportToGun()
     local now = tick()
     if now - lastGunTP < CFG.gunTP.cooldown then return false end
-    local tool = findGunTool(); if not tool then return false end
-    local handle = tool:FindFirstChild("Handle")
-    if not handle or not handle:IsA("BasePart") then return false end
+    local found = findGunTool()
+    if not found then return false end
+    local pos = nil
+    if found:IsA("BasePart") then
+        pos = found.Position
+    elseif found:IsA("Tool") then
+        local handle = found:FindFirstChild("Handle")
+        if handle and handle:IsA("BasePart") then pos = handle.Position end
+    end
+    if not pos then return false end
     local char = LocalPlayer.Character
-    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
     lastGunTP = now
-    hrp.CFrame = CFrame.new(handle.Position + Vector3.new(0, 2.5, 0))
+    hrp.CFrame = CFrame.new(pos + Vector3.new(0, 2.5, 0))
     return true
 end
 
+-- auto-pickup loop
 RunService.Heartbeat:Connect(function()
     if CFG.gunTP.enabled then teleportToGun() end
+    if CFG.gunPickup.enabled then
+        local char = LocalPlayer.Character
+        local hasGun = false
+        if char then
+            for _, obj in ipairs(char:GetChildren()) do
+                if obj:IsA("Tool") and matchAny(obj.Name, GUN_PAT) then hasGun = true; break end
+            end
+        end
+        if not hasGun then teleportToGun() end
+    end
     if CFG.kill.purgeInnocents then
         local now = tick()
         if now - CFG.kill.lastPurge >= CFG.kill.purgeInterval then
@@ -579,7 +599,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ===== UI =====
+-- ===== MM2 UI =====
 local pg = LocalPlayer:WaitForChild("PlayerGui")
 local old = pg:FindFirstChild("MM2_Hub"); if old then old:Destroy() end
 local sg = Instance.new("ScreenGui")
@@ -587,8 +607,8 @@ sg.Name = "MM2_Hub"; sg.ResetOnSpawn = false; sg.IgnoreGuiInset = true
 sg.Parent = pg
 
 local main = Instance.new("Frame", sg)
-main.Size = UDim2.new(0, 248, 0, 700)
-main.Position = UDim2.new(1, -263, 0.5, -350)
+main.Size = UDim2.new(0, 248, 0, 760)
+main.Position = UDim2.new(1, -263, 0.5, -380)
 main.BackgroundColor3 = Color3.fromRGB(11, 11, 16)
 main.BackgroundTransparency = 0.06
 main.BorderSizePixel = 0
@@ -764,18 +784,10 @@ toggle("Show Murderer",  CFG.esp.Murderer, COLORS.Murderer, o, function(v) CFG.e
 toggle("Show Sheriff",   CFG.esp.Sheriff,  COLORS.Sheriff,  o, function(v) CFG.esp.Sheriff  = v end); o = o + 1
 toggle("Show Innocents", CFG.esp.Innocent, COLORS.Innocent, o, function(v) CFG.esp.Innocent = v end); o = o + 1
 
-section("AIMBOT (camera-lock)", o); o = o + 1
-toggle("Aimbot", CFG.aimbot.enabled, Color3.fromRGB(255,180,50), o, function(v)
+section("AIM ASSIST", o); o = o + 1
+toggle("Aim Assist (nudge, not lock)", CFG.aimbot.enabled, Color3.fromRGB(255,180,50), o, function(v)
     CFG.aimbot.enabled = v
-    if v then
-        buildFOVCircle()
-    else
-        pcall(function()
-            Camera.CameraType = Enum.CameraType.Custom
-            Camera.CameraSubject = LocalPlayer.Character
-                and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") or nil
-        end)
-    end
+    if v then buildFOVCircle() end
 end); o = o + 1
 toggle("FOV Circle", CFG.aimbot.showFOV, Color3.fromRGB(180,180,255), o, function(v)
     CFG.aimbot.showFOV = v
@@ -784,24 +796,51 @@ slider("FOV radius (px)", 30, 400, CFG.aimbot.fov, o, function(v)
     CFG.aimbot.fov = v
     if fovCircle then fovCircle.Radius = v end
 end); o = o + 1
-slider("Smooth", 0, 90, 40, o, function(v) aimSmooth = v / 100 end); o = o + 1
+slider("Strength", 1, 40, 5, o, function(v) CFG.aimbot.strength = v / 100 end); o = o + 1
 
-section("KILL", o); o = o + 1
-button("Kill Murderer (instant)", COLORS.Murderer, o, function()
-    _G.N3xtMM2_KillMurderer()
-end); o = o + 1
-button("Kill Sheriff (instant)", COLORS.Sheriff, o, function()
-    _G.N3xtMM2_KillSheriff()
-end); o = o + 1
+section("ROLE PREFERENCE (next round)", o); o = o + 1
+local roleBtns = {}
+local function roleBtn(label, role, color)
+    local btn = Instance.new("TextButton", scroll)
+    btn.Size = UDim2.new(1, 0, 0, 34)
+    btn.BackgroundColor3 = role == nil and Color3.fromRGB(100,100,140) or color
+    btn.BackgroundTransparency = 0.15
+    btn.BorderSizePixel = 0; btn.LayoutOrder = o
+    btn.Text = label; btn.TextColor3 = Color3.fromRGB(235, 235, 240)
+    btn.Font = Enum.Font.GothamBold; btn.TextSize = 12
+    btn.AutoButtonColor = true
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    o = o + 1
+    btn.MouseButton1Click:Connect(function()
+        CFG.rolePreference = role
+        if role then
+            blastRoleRemotes(role)
+            directWriteRole(role)
+        end
+        for _, b in ipairs(roleBtns) do b.BackgroundTransparency = 0.5 end
+        btn.BackgroundTransparency = 0.05
+    end)
+    table.insert(roleBtns, btn)
+end
+roleBtn("Random (normal)", nil, Color3.fromRGB(100,100,140))
+roleBtn("Murderer",        "Murderer", COLORS.Murderer)
+roleBtn("Sheriff",         "Sheriff",  COLORS.Sheriff)
+roleBtns[1].BackgroundTransparency = 0.05
+
+section("KILL (server-gated)", o); o = o + 1
+button("Kill Murderer (instant)", COLORS.Murderer, o, function() _G.N3xtMM2_KillMurderer() end); o = o + 1
+button("Kill Sheriff (instant)", COLORS.Sheriff, o, function() _G.N3xtMM2_KillSheriff() end); o = o + 1
 toggle("Purge Innocents (1 per 2s)", false, COLORS.Innocent, o, function(v)
-    CFG.kill.purgeInnocents = v
-    CFG.kill.lastPurge = 0
+    CFG.kill.purgeInnocents = v; CFG.kill.lastPurge = 0
 end); o = o + 1
 
-section("GUN TELEPORT", o); o = o + 1
+section("GUN", o); o = o + 1
 button("Teleport to Gun", Color3.fromRGB(60, 60, 110), o, teleportToGun); o = o + 1
 toggle("Auto-TP to Gun", CFG.gunTP.enabled, Color3.fromRGB(90, 90, 200), o, function(v)
     CFG.gunTP.enabled = v
+end); o = o + 1
+toggle("Auto-Pickup Gun (drop to me)", CFG.gunPickup.enabled, Color3.fromRGB(180, 120, 60), o, function(v)
+    CFG.gunPickup.enabled = v
 end); o = o + 1
 
 section("MISC", o); o = o + 1
@@ -809,12 +848,11 @@ toggle("Invisibility (proper)", false, Color3.fromRGB(175,75,255), o, function(v
     setInvisible(v)
 end); o = o + 1
 toggle("Invincible (client)", false, Color3.fromRGB(255,120,120), o, function(v)
-    CFG.invincible = v
-    setMM2Invincible(v)
+    CFG.invincible = v; setMM2Invincible(v)
 end); o = o + 1
 
 local collapsed = false
-local fullH = 700
+local fullH = 760
 minBtn.MouseButton1Click:Connect(function()
     collapsed = not collapsed
     minBtn.Text = collapsed and "+" or "-"
@@ -849,18 +887,19 @@ end)
 
 Players.PlayerRemoving:Connect(function(p) removeESP(p) end)
 
-print("[N3xt-MM2 v3.8] loaded (proper invis)")
+print("[N3xt-MM2 v3.9] loaded (assist aim)")
 ]==]
 
 -- ============================================================
---  RIVALS SOURCE — stub (send next message for body)
+--  RIVALS SOURCE — stub (send word for body)
 -- ============================================================
 local RIVALS_SOURCE = [==[
 -- PASTE RIVALS v10.1 SOURCE HERE
 ]==]
 
+-- (Launcher UI continues in next message — do not paste until you have Part 2)
 -- ============================================================
---  UTIL
+--  LAUNCHER UTILITY
 -- ============================================================
 local function Notify(title, text)
     pcall(function()
@@ -932,7 +971,7 @@ local function BuildSplash(parent)
     local tag = Make("TextLabel", {
         Position = UDim2.new(0, 0, 0, 82), Size = UDim2.new(1, 0, 0, 20),
         BackgroundTransparency = 1, Font = Enum.Font.Gotham,
-        Text = "n3xt launcher · v7.4", TextColor3 = THEME.ACCENT,
+        Text = "n3xt launcher · v7.5", TextColor3 = THEME.ACCENT,
         TextSize = 13, TextTransparency = 1, ZIndex = 102, Parent = holder,
     })
     TweenService:Create(logo, TweenInfo.new(0.7, Enum.EasingStyle.Quad), {TextTransparency = 0}):Play()
@@ -1086,6 +1125,9 @@ local function MakeSectionLabel(parent, text, order)
     })
 end
 
+-- ============================================================
+--  LAUNCHER ESP
+-- ============================================================
 local function espClear()
     for _, g in pairs(State.ESP) do
         for _, o in pairs(g) do pcall(function() o:Remove() end) end
@@ -1140,6 +1182,9 @@ local function espUpdate()
     end
 end
 
+-- ============================================================
+--  LAUNCHER AIMBOT (camera hook)
+-- ============================================================
 local function aimbotInstallHook()
     if State.AIM.hookInstalled then return end
     pcall(function()
@@ -1258,6 +1303,9 @@ local function aimbotTick()
     aimbotMouselock(camCF, targetPart.Position)
 end
 
+-- ============================================================
+--  LAUNCHER APPEARANCE
+-- ============================================================
 local function appClear()
     for _, i in pairs(State.APP.instances) do pcall(function() i:Destroy() end) end
     State.APP.instances = {}
@@ -1327,6 +1375,10 @@ local function appRestore()
     end
     appClear()
 end
+
+-- ============================================================
+--  LAUNCHER ETC
+-- ============================================================
 local function etcGodMode(on)
     local hum = State.Humanoid; if not hum then return end
     if on then
@@ -1334,7 +1386,6 @@ local function etcGodMode(on)
         hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
     else hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true) end
 end
-
 local function setInvincible(on)
     local hum = State.Humanoid
     if not hum then return end
@@ -1343,8 +1394,7 @@ local function setInvincible(on)
             State.originalMaxHealth = hum.MaxHealth
         end
         pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end)
-        hum.MaxHealth = 1e6
-        hum.Health = 1e6
+        hum.MaxHealth = 1e6; hum.Health = 1e6
         Notify("N3xt", "Invincible ON (client)")
     else
         pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true) end)
@@ -1356,7 +1406,6 @@ local function setInvincible(on)
         Notify("N3xt", "Invincible OFF")
     end
 end
-
 local function tickInvincible()
     if not CFG.ETC_INVINCIBLE then return end
     local hum = State.Humanoid
@@ -1364,7 +1413,6 @@ local function tickInvincible()
         hum.Health = hum.MaxHealth
     end
 end
-
 local function etcAnchor(on)  if State.RootPart then State.RootPart.Anchored = on end end
 local function etcRespawn()   if State.Humanoid then State.Humanoid.Health = 0 end end
 local function etcFling(targetPlayer)
@@ -1433,6 +1481,9 @@ local function etcTPTool()
     if m and m.Target and hrp then hrp.CFrame = CFrame.new(m.Hit.Position + Vector3.new(0, 3, 0)) end
 end
 
+-- ============================================================
+--  LAUNCHER MENU
+-- ============================================================
 local previewRefresh = function() end
 
 local function BuildMenu(parent)
@@ -1605,6 +1656,7 @@ local function BuildMenu(parent)
     local exec = tabPages["Executor"]
     local order = 0
     local function O() order += 1; return order end
+
     MakeSectionLabel(exec, "Movement", O())
     MakeToggle(exec, "Infinite Jump", function() return CFG.INF_JUMP end,
         function(v) CFG.INF_JUMP = v end, O(), nil, previewRefresh)
@@ -1633,11 +1685,12 @@ local function BuildMenu(parent)
         CFG.JUMP_POWER = v
         if State.Humanoid then State.Humanoid.UseJumpPower = true; State.Humanoid.JumpPower = v end
     end)
+
     MakeSectionLabel(exec, "ESP", O())
     MakeToggle(exec, "ESP", function() return CFG.ESP_ENABLED end,
         function(v)
             CFG.ESP_ENABLED = v
-            if v and not HAS_DRAWING then Notify("N3xt", "no Drawing in this executor — ESP unavailable") end
+            if v and not HAS_DRAWING then Notify("N3xt", "no Drawing in this executor") end
         end, O(), nil, previewRefresh)
     MakeToggle(exec, "Boxes", function() return CFG.ESP_BOXES end,
         function(v) CFG.ESP_BOXES = v end, O(), nil, previewRefresh)
@@ -1647,13 +1700,13 @@ local function BuildMenu(parent)
         function(v) CFG.ESP_NAMES = v end, O(), nil, previewRefresh)
     MakeToggle(exec, "Team Check", function() return CFG.ESP_TEAM_CHECK end,
         function(v) CFG.ESP_TEAM_CHECK = v end, O(), nil, previewRefresh)
+
     MakeSectionLabel(exec, "Aimbot (E = hard lock)", O())
     MakeToggle(exec, "Armed", function() return CFG.AIMBOT_ENABLED end,
         function(v)
             CFG.AIMBOT_ENABLED = v
             if v then
-                if HAS_DRAWING then aimbotBuildFOV()
-                else Notify("N3xt", "no Drawing — FOV circle disabled") end
+                if HAS_DRAWING then aimbotBuildFOV() end
             else aimbotUninstallHook() end
         end, O(), nil, previewRefresh)
     MakeToggle(exec, "Hard Lock", function() return CFG.AIMBOT_LOCK_STATE end,
@@ -1672,6 +1725,7 @@ local function BuildMenu(parent)
     end)
     MakeSlider(exec, "Smooth (0=snap)", 0, 100, math.floor(CFG.AIMBOT_SMOOTH * 100), O(),
         function(v) CFG.AIMBOT_SMOOTH = v / 100 end)
+
     MakeSectionLabel(exec, "Appearance", O())
     for _, row in ipairs({
         {"Fire","APP_FIRE"}, {"Highlight","APP_HIGHLIGHT"}, {"Smoke","APP_SMOKE"},
@@ -1683,6 +1737,7 @@ local function BuildMenu(parent)
             function(v) CFG[key] = v; appApply() end, O(), nil, previewRefresh)
     end
     MakeButton(exec, "Reset Appearance", Color3.fromRGB(60, 45, 110), O(), appRestore)
+
     MakeSectionLabel(exec, "Etc", O())
     MakeToggle(exec, "God Mode", function() return CFG.ETC_GODMODE end,
         function(v) CFG.ETC_GODMODE = v; etcGodMode(v) end, O(), nil, previewRefresh)
@@ -1704,9 +1759,7 @@ local function BuildMenu(parent)
     MakeButton(exec, "Btools", Color3.fromRGB(30, 24, 50), O(), etcBtools)
     MakeButton(exec, "Respawn", Color3.fromRGB(120, 45, 45), O(), etcRespawn)
     MakeButton(exec, "TP Tool", Color3.fromRGB(60, 45, 110), O(), etcTPTool)
-    MakeButton(exec, "Fling Self", Color3.fromRGB(80, 40, 40), O(), function()
-        etcFling(LocalPlayer)
-    end)
+    MakeButton(exec, "Fling Self", Color3.fromRGB(80, 40, 40), O(), function() etcFling(LocalPlayer) end)
     MakeButton(exec, "Fling Nearest", Color3.fromRGB(90, 40, 40), O(), function()
         local myPos = State.RootPart and State.RootPart.Position
         if not myPos then return end
@@ -1725,10 +1778,7 @@ local function BuildMenu(parent)
     MakeButton(exec, "Fling All", Color3.fromRGB(120, 40, 40), O(), function()
         task.spawn(function()
             for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer then
-                    etcFling(p)
-                    task.wait(0.05)
-                end
+                if p ~= LocalPlayer then etcFling(p); task.wait(0.05) end
             end
         end)
     end)
@@ -1738,30 +1788,22 @@ local function BuildMenu(parent)
     local function SO() so += 1; return so end
     MakeSectionLabel(scripts, "Game Hubs", SO())
     MakeButton(scripts, "Launch MM2 Hub", Color3.fromRGB(120, 45, 90), SO(), function()
-        if #MM2_SOURCE < 100 then
-            Notify("N3xt", "MM2 source is empty")
-            return
-        end
+        if #MM2_SOURCE < 100 then Notify("N3xt", "MM2 source is empty"); return end
         if State.MM2Loaded then Notify("N3xt", "MM2 already running"); return end
-        if not HAS_LOADSTRING then Notify("N3xt", "no loadstring in this executor"); return end
+        if not HAS_LOADSTRING then Notify("N3xt", "no loadstring"); return end
         local chunk, err = loadstring(MM2_SOURCE, "=MM2")
         if not chunk then warn("[N3xt] mm2 compile: " .. tostring(err)); return end
         local ok, e = pcall(chunk)
-        if ok then State.MM2Loaded = true
-        else warn("[N3xt] mm2 runtime: " .. tostring(e)) end
+        if ok then State.MM2Loaded = true else warn("[N3xt] mm2 runtime: " .. tostring(e)) end
     end)
     MakeButton(scripts, "Launch Rivals v10.1", Color3.fromRGB(60, 45, 140), SO(), function()
-        if #RIVALS_SOURCE < 100 then
-            Notify("N3xt", "Rivals source is empty")
-            return
-        end
+        if #RIVALS_SOURCE < 100 then Notify("N3xt", "Rivals source is empty"); return end
         if State.RivalsLoaded then Notify("N3xt", "Rivals already running"); return end
-        if not HAS_LOADSTRING then Notify("N3xt", "no loadstring in this executor"); return end
+        if not HAS_LOADSTRING then Notify("N3xt", "no loadstring"); return end
         local chunk, err = loadstring(RIVALS_SOURCE, "=Rivals")
         if not chunk then warn("[N3xt] rivals compile: " .. tostring(err)); return end
         local ok, e = pcall(chunk)
-        if ok then State.RivalsLoaded = true
-        else warn("[N3xt] rivals runtime: " .. tostring(e)) end
+        if ok then State.RivalsLoaded = true else warn("[N3xt] rivals runtime: " .. tostring(e)) end
     end)
     MakeSectionLabel(scripts, "Utility Loaders", SO())
     MakeButton(scripts, "Infinite Yield", Color3.fromRGB(80, 45, 170), SO(), function()
@@ -1840,7 +1882,7 @@ local function BuildMenu(parent)
         Size = UDim2.new(1, 0, 0, 60), BackgroundColor3 = THEME.BTN_BG,
         BackgroundTransparency = 0.15, BorderSizePixel = 0,
         Font = Enum.Font.Gotham,
-        Text = "N3xt launcher v7.4\nloaded for " .. LocalPlayer.Name,
+        Text = "N3xt launcher v7.5\nloaded for " .. LocalPlayer.Name,
         TextColor3 = THEME.TEXT_DIM, TextSize = 11,
         TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
         LayoutOrder = PO(), Parent = settings,
@@ -1904,6 +1946,9 @@ local function BuildMenu(parent)
     end)
 end
 
+-- ============================================================
+--  CHARACTER + LOOPS
+-- ============================================================
 local function OnCharacter(char)
     State.Character = char
     State.Humanoid  = char:WaitForChild("Humanoid", 5)
@@ -1914,8 +1959,7 @@ local function OnCharacter(char)
             State.Humanoid.JumpPower = CFG.JUMP_POWER
         end)
         if CFG.ETC_INVINCIBLE then
-            task.wait(0.4)
-            setInvincible(true)
+            task.wait(0.4); setInvincible(true)
         end
     end
 end
@@ -1950,6 +1994,9 @@ local function UpdateGodMode()
     if hum and hum.Health > 0 and hum.Health < hum.MaxHealth then hum.Health = hum.MaxHealth end
 end
 
+-- ============================================================
+--  BOOT
+-- ============================================================
 local uiParent = GetUIParent()
 local screenGui = Make("ScreenGui", {
     Name = "N3xtUI", ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -2008,5 +2055,5 @@ RunService.Heartbeat:Connect(function(dt)
     tickInvincible()
 end)
 
-Notify("N3xt", "Launcher v7.4 loaded")
-print("[N3xt launcher v7.4] ready")
+Notify("N3xt", "Launcher v7.5 loaded")
+print("[N3xt launcher v7.5] ready")
