@@ -293,8 +293,10 @@ local function removeESP(player)
     if billboards[player] then billboards[player]:Destroy(); billboards[player] = nil end
 end
 
--- CURSOR-LOCK AIMBOT
+-- CAMERA-LOCK AIMBOT
 local fovCircle
+local aimSmooth = 0.4
+
 local function buildFOVCircle()
     if not (typeof(Drawing) == "table") then return end
     if fovCircle then pcall(function() fovCircle:Remove() end) end
@@ -309,10 +311,12 @@ local function buildFOVCircle()
     end)
     if ok then fovCircle = c end
 end
+
 local function inFOV(sp)
     local c = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
     return (sp - c).Magnitude <= CFG.aimbot.fov
 end
+
 local function doAimbot()
     if not CFG.aimbot.enabled      then return end
     if getLocalRole() ~= "Sheriff" then return end
@@ -320,22 +324,17 @@ local function doAimbot()
     if not m or not m.Character    then return end
     local head = m.Character:FindFirstChild("Head")
     if not head                    then return end
+
     local sp, onScreen = Camera:WorldToViewportPoint(head.Position)
     if not onScreen                then return end
     if not inFOV(Vector2.new(sp.X, sp.Y)) then return end
+
     local camCF = Camera.CFrame
-    local worldDir = head.Position - camCF.Position
-    if worldDir.Magnitude < 0.001 then return end
-    worldDir = worldDir.Unit
-    if camCF.LookVector:Dot(worldDir) <= 0 then return end
-    local hA = math.asin(math.clamp(camCF.RightVector:Dot(worldDir), -1, 1))
-    local vA = math.asin(math.clamp(camCF.UpVector:Dot(worldDir),   -1, 1))
-    local sens = CFG.aimbot.sens or 1.0
-    local ppr  = Camera.ViewportSize.X / (2 * math.pi * sens)
-    local strength = CFG.aimbot.strength or 0.25
-    if mousemoverel then
-        pcall(mousemoverel, hA * ppr * strength, -vA * ppr * strength)
-    end
+    local desired = CFrame.lookAt(camCF.Position, head.Position)
+    local smoothed = camCF:Lerp(desired, 1 - aimSmooth)
+
+    pcall(function() Camera.CameraType = Enum.CameraType.Scriptable end)
+    Camera.CFrame = smoothed
 end
 
 -- ============================================================
@@ -765,10 +764,18 @@ toggle("Show Murderer",  CFG.esp.Murderer, COLORS.Murderer, o, function(v) CFG.e
 toggle("Show Sheriff",   CFG.esp.Sheriff,  COLORS.Sheriff,  o, function(v) CFG.esp.Sheriff  = v end); o = o + 1
 toggle("Show Innocents", CFG.esp.Innocent, COLORS.Innocent, o, function(v) CFG.esp.Innocent = v end); o = o + 1
 
-section("AIMBOT (cursor-lock)", o); o = o + 1
+section("AIMBOT (camera-lock)", o); o = o + 1
 toggle("Aimbot", CFG.aimbot.enabled, Color3.fromRGB(255,180,50), o, function(v)
     CFG.aimbot.enabled = v
-    if v then buildFOVCircle() end
+    if v then
+        buildFOVCircle()
+    else
+        pcall(function()
+            Camera.CameraType = Enum.CameraType.Custom
+            Camera.CameraSubject = LocalPlayer.Character
+                and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") or nil
+        end)
+    end
 end); o = o + 1
 toggle("FOV Circle", CFG.aimbot.showFOV, Color3.fromRGB(180,180,255), o, function(v)
     CFG.aimbot.showFOV = v
@@ -777,8 +784,7 @@ slider("FOV radius (px)", 30, 400, CFG.aimbot.fov, o, function(v)
     CFG.aimbot.fov = v
     if fovCircle then fovCircle.Radius = v end
 end); o = o + 1
-slider("Sens", 0.2, 3.0, 1.0, o, function(v) CFG.aimbot.sens = v end); o = o + 1
-slider("Strength", 0.05, 1.0, 0.25, o, function(v) CFG.aimbot.strength = v end); o = o + 1
+slider("Smooth", 0, 90, 40, o, function(v) aimSmooth = v / 100 end); o = o + 1
 
 section("KILL", o); o = o + 1
 button("Kill Murderer (instant)", COLORS.Murderer, o, function()
