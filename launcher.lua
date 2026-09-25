@@ -226,7 +226,7 @@ local function BuildHubWindow(title,icon,NAV)
     local sbDiv=Instance.new("Frame",body);sbDiv.Position=UDim2.fromOffset(SBW,0);sbDiv.Size=UDim2.fromOffset(1,WH-TBH);sbDiv.BackgroundColor3=T.BORDER;sbDiv.BorderSizePixel=0
 
     local sfr=Instance.new("Frame",sb);sfr.Position=UDim2.fromOffset(8,8);sfr.Size=UDim2.new(1,-16,0,30);sfr.BackgroundColor3=Color3.fromRGB(20,16,34);sfr.BorderSizePixel=0;Instance.new("UICorner",sfr).CornerRadius=UDim.new(0,8)
-    Instance.new("TextLabel",sfr).Position=UDim2.fromOffset(6,0);local _sIco=sfr:FindFirstChildOfClass("TextLabel");_sIco.Size=UDim2.fromOffset(20,30);_sIco.BackgroundTransparency=1;_sIco.Text="🔍";_sIco.TextSize=12
+    local sIco=Instance.new("TextLabel",sfr);sIco.Position=UDim2.fromOffset(6,0);sIco.Size=UDim2.fromOffset(20,30);sIco.BackgroundTransparency=1;sIco.Text="🔍";sIco.TextSize=12
     local sBx=Instance.new("TextBox",sfr);sBx.Position=UDim2.fromOffset(24,0);sBx.Size=UDim2.new(1,-32,1,0);sBx.BackgroundTransparency=1;sBx.Font=Enum.Font.Gotham;sBx.Text="";sBx.TextColor3=T.TEXT;sBx.TextSize=12;sBx.PlaceholderText="Search...";sBx.PlaceholderColor3=T.DIM;sBx.ClearTextOnFocus=false
 
     local navSc=Instance.new("ScrollingFrame",sb);navSc.Position=UDim2.fromOffset(0,46);navSc.Size=UDim2.new(1,0,1,-46-58);navSc.BackgroundTransparency=1;navSc.BorderSizePixel=0;navSc.ScrollBarThickness=2;navSc.ScrollBarImageColor3=T.BORDER;navSc.CanvasSize=UDim2.new(0,0,0,0);navSc.AutomaticCanvasSize=Enum.AutomaticSize.Y
@@ -487,10 +487,11 @@ local function Launch99Nights()
         speedOn=false,speed=28,
         selectedPlayer=nil,playerList={},
         nightSkip=false,
-        -- NEW: Safehouse
         safehouseOn=false, safehousePart=nil, safehousePrevCFrame=nil,
         autoFeedOn=false, hungerThreshold=30,
         safehouseHeight=250, platformSize=24,
+        gatherDiag=false,
+        bringSelected=false,
     }
 
     local MONSTER_NAMES={"monster","creature","demon","beast","ghost","zombie","wolf","bear","spider","wendigo","entity","hunter","predator","shadow","horror"}
@@ -610,21 +611,404 @@ local function Launch99Nights()
         if p.Character then destroyHL(p.Character) end
     end)
 
-       mkSec(sp2,"💥 Hit Aura",o+1);o=o+1
-    mkTog(sp2,"Enable Hit Aura","Damage every valid target in radius",o+1,function() return AURA.enabled end,function(v) AURA.enabled=v end);o=o+1
-    mkTog(sp2,"Include Players","Also hit other survivors (use with caution)",o+1,function() return AURA.hitPlayers end,function(v) AURA.hitPlayers=v end);o=o+1
-    mkTog(sp2,"Diagnostic Overlay","Show which remotes are firing at what",o+1,function() return AURA.diagnostic end,function(v) AURA.diagnostic=v;diagFrame.Visible=v end);o=o+1
-    mkSld(sp2,"Aura Radius",o+1,10,400,40,function(v) AURA.radius=v end);o=o+1
-    mkSld(sp2,"Max Targets / Tick",o+1,5,60,25,function(v) AURA.maxTargets=v end);o=o+1
-    mkAction(sp2,"Manual Remote Test","Fire all damage remotes at nearest monster — check console output",o+1,"🧪",function()
-        if _G.N3XT_MANUAL_AURA_TEST then _G.N3XT_MANUAL_AURA_TEST() end
-    end);o=o+1
     -- ═══════════════════════════════════════════════
-    -- GOD MODE (two-part: HP lock + death interception)
+    -- HIT AURA (v3 — safe mode + hard self guard)
+    -- ═══════════════════════════════════════════════
+    local AURA = {
+        enabled     = false,
+        radius      = 40,
+        hitPlayers  = false,
+        hitMonsters = true,
+        maxTargets  = 25,
+        tickRate    = 0.35,
+        diagnostic  = false,
+        safeMode    = true,   -- no remotes, local TakeDamage only
+    }
+
+    local DAMAGE_KEYWORDS = {
+        "damage","hit","attack","hurt","strike","slash","kill","wound","harm",
+        "swing","chop","axe","pick","stab","shoot","punch","melee","combat",
+        "dealdamage","applydamage","takedamage","health","hp","death","die"
+    }
+
+    local damageRemotes = {}
+    local remotesScanned = false
+
+    local function scanDamageRemotes()
+        damageRemotes = {}
+        local roots = {game:GetService("ReplicatedStorage"), workspace}
+        for _,root in ipairs(roots) do
+            for _,obj in ipairs(root:GetDescendants()) do
+                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                    local n = obj.Name:lower()
+                    for _,kw in ipairs(DAMAGE_KEYWORDS) do
+                        if n:find(kw,1,true) then
+                            table.insert(damageRemotes, obj)
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        remotesScanned = true
+        if AURA.diagnostic then
+            print("[N3xt Aura] scanned "..#damageRemotes.." damage-adjacent remotes")
+            for _,r in ipairs(damageRemotes) do
+                print("  -> "..r:GetFullName())
+            end
+        end
+    end
+
+    local diagGui = Instance.new("ScreenGui")
+    diagGui.Name = "N3xtAuraDiag"
+    diagGui.ResetOnSpawn = false
+    diagGui.IgnoreGuiInset = true
+    diagGui.Parent = SG
+
+    local diagFrame = Instance.new("Frame", diagGui)
+    diagFrame.AnchorPoint = Vector2.new(0, 1)
+    diagFrame.Position = UDim2.new(0, 10, 1, -10)
+    diagFrame.Size = UDim2.fromOffset(420, 180)
+    diagFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 14)
+    diagFrame.BackgroundTransparency = 0.15
+    diagFrame.BorderSizePixel = 0
+    diagFrame.Visible = false
+    Instance.new("UICorner", diagFrame).CornerRadius = UDim.new(0, 8)
+    local diagStroke = Instance.new("UIStroke", diagFrame)
+    diagStroke.Color = T.NEON
+    diagStroke.Thickness = 1.5
+
+    local diagTitle = Instance.new("TextLabel", diagFrame)
+    diagTitle.Position = UDim2.fromOffset(8, 6)
+    diagTitle.Size = UDim2.new(1, -16, 0, 18)
+    diagTitle.BackgroundTransparency = 1
+    diagTitle.Font = Enum.Font.GothamBold
+    diagTitle.Text = "N3xt Aura Diagnostic"
+    diagTitle.TextColor3 = T.NEON
+    diagTitle.TextSize = 12
+    diagTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+    local diagBody = Instance.new("TextLabel", diagFrame)
+    diagBody.Position = UDim2.fromOffset(8, 26)
+    diagBody.Size = UDim2.new(1, -16, 1, -34)
+    diagBody.BackgroundTransparency = 1
+    diagBody.Font = Enum.Font.Code
+    diagBody.Text = ""
+    diagBody.TextColor3 = T.TEXT
+    diagBody.TextSize = 11
+    diagBody.TextXAlignment = Enum.TextXAlignment.Left
+    diagBody.TextYAlignment = Enum.TextYAlignment.Top
+    diagBody.TextWrapped = true
+
+    local diagLines = {}
+    local function diagLog(line)
+        if not AURA.diagnostic then return end
+        table.insert(diagLines, 1, line)
+        while #diagLines > 12 do table.remove(diagLines) end
+        diagBody.Text = table.concat(diagLines, "\n")
+        print("[N3xt Aura] "..line)
+    end
+
+    local auraAccum = 0
+    local lastDiagHeartbeat = 0
+
+    RunService.Heartbeat:Connect(function(dt)
+        if not AURA.enabled then
+            if diagFrame.Visible then diagFrame.Visible = false end
+            return
+        end
+        diagFrame.Visible = AURA.diagnostic
+
+        auraAccum = auraAccum + dt
+        if auraAccum < AURA.tickRate then return end
+        auraAccum = 0
+
+        local char = LP.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local myHumanoid = char and char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not myHumanoid then
+            if tick() - lastDiagHeartbeat > 2 then
+                diagLog("no character / hrp / humanoid")
+                lastDiagHeartbeat = tick()
+            end
+            return
+        end
+
+        if not remotesScanned then scanDamageRemotes() end
+
+        local origin = hrp.Position
+        local count  = 0
+        local pset   = playerCharSet()
+
+        local candidates = {}
+
+        for _,top in ipairs(workspace:GetChildren()) do
+            if count >= AURA.maxTargets then break end
+            local models = {}
+            if top:IsA("Model") then table.insert(models, top) end
+            for _,child in ipairs(top:GetChildren()) do
+                if child:IsA("Model") then table.insert(models, child) end
+            end
+
+            for _,obj in ipairs(models) do
+                if count >= AURA.maxTargets then break end
+                if obj ~= char and obj ~= LP.Character then
+                    local hm = obj:FindFirstChildOfClass("Humanoid")
+                    if hm and hm.Health > 0 and hm ~= myHumanoid then
+                        local isPlayerChar = pset[obj] == true
+                        local targetable = false
+                        if isPlayerChar then
+                            if AURA.hitPlayers then targetable = true end
+                        else
+                            if AURA.hitMonsters then targetable = true end
+                        end
+
+                        if targetable then
+                            local root = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
+                            if root then
+                                local d = (root.Position - origin).Magnitude
+                                if d <= AURA.radius then
+                                    table.insert(candidates, {model=obj, hm=hm, root=root, d=d})
+                                    count = count + 1
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if #candidates > 0 then
+            diagLog(string.format("[%0.1fs] %d target(s) in radius %.0f", tick()%1000, #candidates, AURA.radius))
+        end
+
+        for _,c in ipairs(candidates) do
+            if c.model == char or c.hm == myHumanoid then continue end
+            diagLog("  -> "..c.model.Name.." (hp "..math.floor(c.hm.Health)..")")
+            pcall(function() c.hm:TakeDamage(c.hm.MaxHealth) end)
+            if not AURA.safeMode then
+                for _,rem in ipairs(damageRemotes) do
+                    pcall(function()
+                        if rem:IsA("RemoteEvent") then
+                            rem:FireServer(c.model, c.hm, c.root, c.hm.MaxHealth)
+                        else
+                            rem:InvokeServer(c.model, c.hm, c.root, c.hm.MaxHealth)
+                        end
+                    end)
+                end
+            end
+        end
+    end)
+
+    local function manualRemoteTest()
+        if not remotesScanned then scanDamageRemotes() end
+        local char = LP.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then Notif("N3xt","No character"); return end
+
+        local pset = playerCharSet()
+        local nearestModel, nearestRoot, nearestHm, nearestDist = nil, nil, nil, math.huge
+        for _,obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= char then
+                local hm = obj:FindFirstChildOfClass("Humanoid")
+                if hm and hm.Health > 0 then
+                    local root = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
+                    if root and not pset[obj] then
+                        local d = (root.Position - hrp.Position).Magnitude
+                        if d < nearestDist then
+                            nearestDist = d
+                            nearestModel = obj
+                            nearestRoot = root
+                            nearestHm = hm
+                        end
+                    end
+                end
+            end
+        end
+
+        if not nearestModel then
+            Notif("N3xt","No non-player Humanoid found nearby")
+            return
+        end
+
+        print("[N3xt Aura] manual test — target "..nearestModel.Name.." at "..math.floor(nearestDist).." studs")
+        local shapes = {
+            {nearestModel},{nearestModel, nearestHm},{nearestModel, nearestHm, nearestRoot},
+            {nearestHm},{nearestHm, nearestHm.MaxHealth},{nearestModel, nearestHm.MaxHealth},
+            {nearestModel.Name},{},
+        }
+        for _,rem in ipairs(damageRemotes) do
+            for i,args in ipairs(shapes) do
+                pcall(function()
+                    if rem:IsA("RemoteEvent") then rem:FireServer(unpack(args))
+                    else rem:InvokeServer(unpack(args)) end
+                end)
+            end
+        end
+        pcall(function() nearestHm:TakeDamage(nearestHm.MaxHealth) end)
+        Notif("N3xt","Manual test fired at "..nearestModel.Name.." — check console")
+    end
+
+    -- ═══════════════════════════════════════════════
+    -- GATHERING (ProximityPrompt based — works on any name)
+    -- ═══════════════════════════════════════════════
+    local gatherDiagLines = {}
+    local gatherDiagFrame = Instance.new("Frame", diagGui)
+    gatherDiagFrame.AnchorPoint = Vector2.new(0, 1)
+    gatherDiagFrame.Position = UDim2.new(0, 10, 1, -200)
+    gatherDiagFrame.Size = UDim2.fromOffset(420, 180)
+    gatherDiagFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 14)
+    gatherDiagFrame.BackgroundTransparency = 0.15
+    gatherDiagFrame.BorderSizePixel = 0
+    gatherDiagFrame.Visible = false
+    Instance.new("UICorner", gatherDiagFrame).CornerRadius = UDim.new(0, 8)
+    Instance.new("UIStroke", gatherDiagFrame).Color = T.CYAN
+
+    local gatherTitle = Instance.new("TextLabel", gatherDiagFrame)
+    gatherTitle.Position = UDim2.fromOffset(8, 6)
+    gatherTitle.Size = UDim2.new(1, -16, 0, 18)
+    gatherTitle.BackgroundTransparency = 1
+    gatherTitle.Font = Enum.Font.GothamBold
+    gatherTitle.Text = "N3xt Gathering Diagnostic"
+    gatherTitle.TextColor3 = T.CYAN
+    gatherTitle.TextSize = 12
+    gatherTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+    local gatherBody = Instance.new("TextLabel", gatherDiagFrame)
+    gatherBody.Position = UDim2.fromOffset(8, 26)
+    gatherBody.Size = UDim2.new(1, -16, 1, -34)
+    gatherBody.BackgroundTransparency = 1
+    gatherBody.Font = Enum.Font.Code
+    gatherBody.Text = ""
+    gatherBody.TextColor3 = T.TEXT
+    gatherBody.TextSize = 11
+    gatherBody.TextXAlignment = Enum.TextXAlignment.Left
+    gatherBody.TextYAlignment = Enum.TextYAlignment.Top
+    gatherBody.TextWrapped = true
+
+    local function gatherLog(line)
+        if not ST.gatherDiag then return end
+        table.insert(gatherDiagLines, 1, line)
+        while #gatherDiagLines > 12 do table.remove(gatherDiagLines) end
+        gatherBody.Text = table.concat(gatherDiagLines, "\n")
+        print("[N3xt Gather] "..line)
+    end
+
+    -- find nearest "interactable" — anything with a ProximityPrompt within 60 studs
+    local function findNearestInteractable(filter)
+        local char = LP.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil, nil end
+        local nearest, nearestPrompt, nearestDist = nil, nil, math.huge
+        for _,obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") or obj:IsA("Model") or obj:IsA("Attachment") then
+                local p = obj:FindFirstChildOfClass("ProximityPrompt")
+                if not p and obj:IsA("Model") then
+                    for _,c in ipairs(obj:GetDescendants()) do
+                        if c:IsA("ProximityPrompt") then p = c; break end
+                    end
+                end
+                if p then
+                    local part = obj:IsA("BasePart") and obj or (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart"))
+                    if part then
+                        local n = obj.Name:lower()
+                        local pass = true
+                        if filter == "food" then
+                            pass = false
+                            for _,kw in ipairs(FOOD_NAMES) do if n:find(kw,1,true) then pass = true; break end end
+                        elseif filter == "wood" then
+                            pass = false
+                            for _,kw in ipairs(WOOD_NAMES) do if n:find(kw,1,true) then pass = true; break end end
+                        end
+                        if pass then
+                            local d = (part.Position - hrp.Position).Magnitude
+                            if d < nearestDist then
+                                nearestDist = d
+                                nearest = part
+                                nearestPrompt = p
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return nearest, nearestPrompt
+    end
+
+    -- fire the prompt directly (server sees it as a normal interaction)
+    local function firePrompt(prompt)
+        if not prompt then return false end
+        local ok1 = pcall(function() prompt:InputHoldBegin() end)
+        local ok2 = pcall(function() prompt:InputHoldEnd() end)
+        local ok3 = pcall(function() fireproximityprompt(prompt) end)
+        return ok1 or ok2 or ok3
+    end
+
+    -- gather tick — teleport to nearest interactable, fire its prompt
+    local gatherCooldown = 0
+    RunService.Heartbeat:Connect(function(dt)
+        if gatherCooldown > 0 then gatherCooldown = gatherCooldown - dt; return end
+        if not (ST.autoFood or ST.autoWood) then return end
+        local filter = nil
+        if ST.autoFood and ST.autoWood then filter = nil
+        elseif ST.autoFood then filter = "food"
+        elseif ST.autoWood then filter = "wood" end
+
+        local target, prompt = findNearestInteractable(filter)
+        if target then
+            local char = LP.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = target.CFrame + Vector3.new(0, 3, 0)
+                task.wait(0.15)
+                firePrompt(prompt)
+                gatherLog("gathered: "..target.Name..(prompt and (" ("..prompt.Name..")") or ""))
+                gatherCooldown = 1.2
+            end
+        else
+            gatherLog("no interactable found for filter "..tostring(filter))
+            gatherCooldown = 2
+        end
+    end)
+
+    -- gather diagnostic tick — prints anything interactable nearby
+    RunService.Heartbeat:Connect(function()
+        if not ST.gatherDiag then
+            if gatherDiagFrame.Visible then gatherDiagFrame.Visible = false end
+            return
+        end
+        gatherDiagFrame.Visible = true
+        local char = LP.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local lines = {}
+        local count = 0
+        for _,obj in ipairs(workspace:GetDescendants()) do
+            if count >= 10 then break end
+            local p = obj:FindFirstChildOfClass("ProximityPrompt")
+            if not p and obj:IsA("Model") then
+                for _,c in ipairs(obj:GetDescendants()) do if c:IsA("ProximityPrompt") then p = c; break end end
+            end
+            if p then
+                local part = obj:IsA("BasePart") and obj or (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart"))
+                if part then
+                    local d = (part.Position - hrp.Position).Magnitude
+                    if d < 80 then
+                        table.insert(lines, string.format("%s [%s] %.0f", obj.Name, obj.ClassName, d))
+                        count = count + 1
+                    end
+                end
+            end
+        end
+        table.sort(lines)
+        gatherBody.Text = table.concat(lines, "\n")
+    end)
+
+    -- ═══════════════════════════════════════════════
+    -- GOD MODE
     -- ═══════════════════════════════════════════════
     local godConn, godDiedConn, godHealthConn
     local function setGod(on)
-        -- tear down
         if godConn then godConn:Disconnect();godConn=nil end
         if godDiedConn then godDiedConn:Disconnect();godDiedConn=nil end
         if godHealthConn then godHealthConn:Disconnect();godHealthConn=nil end
@@ -634,22 +1018,17 @@ local function Launch99Nights()
         if not hm then return end
 
         if on then
-            -- 1. prevent the death state entirely
             pcall(function() hm:SetStateEnabled(Enum.HumanoidStateType.Dead, false) end)
-            -- 2. huge max health
             hm.MaxHealth = 1e9
             hm.Health = 1e9
-            -- 3. intercept HealthChanged and immediately restore
             godHealthConn = hm.HealthChanged:Connect(function(newH)
                 if newH < hm.MaxHealth and newH > 0 then
                     pcall(function() hm.Health = hm.MaxHealth end)
                 end
             end)
-            -- 4. intercept Died — cancel by resetting health
             godDiedConn = hm.Died:Connect(function()
                 pcall(function() hm.Health = hm.MaxHealth end)
             end)
-            -- 5. hard render-step lock so the server can't visibly kill us
             godConn = RunService.RenderStepped:Connect(function()
                 if hm and hm.Parent and hm.Health > 0 then
                     if hm.Health < hm.MaxHealth then
@@ -705,12 +1084,10 @@ local function Launch99Nights()
     RunService:BindToRenderStep("N3xt99S",Enum.RenderPriority.Character.Value+1,function() if not ST.speedOn then return end;local char=LP.Character;if not char then return end;local hm=char:FindFirstChildOfClass("Humanoid");if hm then pcall(function() hm.WalkSpeed=ST.speed end) end end)
 
     -- ═══════════════════════════════════════════════
-    -- SAFEHOUSE PLATFORM + AUTO-FEED
+    -- SAFEHOUSE + AUTO-FEED
     -- ═══════════════════════════════════════════════
     local function buildSafehouse()
-        if ST.safehousePart and ST.safehousePart.Parent then
-            ST.safehousePart:Destroy()
-        end
+        if ST.safehousePart and ST.safehousePart.Parent then ST.safehousePart:Destroy() end
         local char = LP.Character
         local hrp  = char and char:FindFirstChild("HumanoidRootPart")
         local basePos = hrp and hrp.Position or Vector3.new(0, 50, 0)
@@ -727,16 +1104,12 @@ local function Launch99Nights()
         plat.Transparency = 0.15
         plat.Parent = workspace
 
-        -- small railing so you don't walk off
         for _,off in ipairs({Vector3.new(0,0,-ST.platformSize/2),Vector3.new(0,0,ST.platformSize/2),Vector3.new(-ST.platformSize/2,0,0),Vector3.new(ST.platformSize/2,0,0)}) do
             local wall = Instance.new("Part")
             wall.Size = Vector3.new(ST.platformSize, 3, 0.5)
-            if math.abs(off.X) > 0 then
-                wall.Size = Vector3.new(0.5, 3, ST.platformSize)
-            end
+            if math.abs(off.X) > 0 then wall.Size = Vector3.new(0.5, 3, ST.platformSize) end
             wall.Position = pos + Vector3.new(off.X, 2, off.Z)
-            wall.Anchored = true
-            wall.CanCollide = true
+            wall.Anchored = true; wall.CanCollide = true
             wall.Material = Enum.Material.Neon
             wall.Color = Color3.fromRGB(0,180,255)
             wall.Transparency = 0.4
@@ -766,9 +1139,7 @@ local function Launch99Nights()
             if obj:IsA("BasePart") then
                 local n = obj.Name:lower()
                 local hit = false
-                for _,kw in ipairs(FOOD_NAMES) do
-                    if n:find(kw,1,true) then hit = true; break end
-                end
+                for _,kw in ipairs(FOOD_NAMES) do if n:find(kw,1,true) then hit = true; break end end
                 if hit then
                     local d = (obj.Position - hrp.Position).Magnitude
                     if d < nearDist then nearDist = d; nearest = obj end
@@ -778,69 +1149,78 @@ local function Launch99Nights()
         return nearest
     end
 
-    -- hunger scan: look for a NumberValue that looks like hunger/food
     local function getHungerValue()
         local char = LP.Character
         if not char then return nil end
         for _,v in ipairs(char:GetDescendants()) do
             if v:IsA("NumberValue") or v:IsA("IntValue") then
                 local nm = v.Name:lower()
-                if nm:find("hung",1,true) or nm:find("food",1,true) or nm:find("cal",1,true) or nm:find("starve",1,true) then
-                    return v
-                end
+                if nm:find("hung",1,true) or nm:find("food",1,true) or nm:find("cal",1,true) or nm:find("starve",1,true) then return v end
             end
         end
-        -- also check Player for hunger stats
         for _,v in ipairs(LP:GetDescendants()) do
             if v:IsA("NumberValue") or v:IsA("IntValue") then
                 local nm = v.Name:lower()
-                if nm:find("hung",1,true) or nm:find("food",1,true) or nm:find("starve",1,true) then
-                    return v
-                end
+                if nm:find("hung",1,true) or nm:find("food",1,true) or nm:find("starve",1,true) then return v end
             end
         end
         return nil
     end
 
     local feedCooldown = 0
-    local function autoFeedTick(dt)
+    RunService.Heartbeat:Connect(function(dt)
         if not ST.autoFeedOn then return end
         if feedCooldown > 0 then feedCooldown = feedCooldown - dt; return end
-
         local hunger = getHungerValue()
-        if not hunger then return end
-        -- figure out whether it's a "0=starving" or "100=full" stat
-        -- most games use 0=starving, max=full. If value ratio is below threshold, go eat.
-        local maxV = hunger.MaxValue > 0 and hunger.MaxValue or 100
-        local ratio = hunger.Value / maxV
-        -- if the value is trending down and it's under our threshold ratio
-        if ratio * 100 <= ST.hungerThreshold then
-            local food = findNearestFood()
+        if not hunger then
+            -- fallback: if no hunger value exists, just go find food periodically
+            feedCooldown = 20
+            local food, prompt = findNearestInteractable("food")
             if food then
                 local char = LP.Character
                 local hrp  = char and char:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     hrp.CFrame = food.CFrame + Vector3.new(0, 3, 0)
-                    Notif("N3xt","Auto-feed: dropped to food 🍓")
-                    feedCooldown = 8
-                    -- return to safehouse after a short delay
-                    task.delay(6, function()
+                    task.wait(0.2)
+                    firePrompt(prompt)
+                    Notif("N3xt","Auto-feed: ate at "..food.Name.." 🍓")
+                    task.delay(2, function()
                         if ST.safehouseOn and ST.safehousePart then
                             local c2 = LP.Character
                             local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
-                            if h2 then
-                                h2.CFrame = ST.safehousePart.CFrame + Vector3.new(0, 4, 0)
-                            end
+                            if h2 then h2.CFrame = ST.safehousePart.CFrame + Vector3.new(0, 4, 0) end
+                        end
+                    end)
+                end
+            end
+            return
+        end
+        local maxV = hunger.MaxValue > 0 and hunger.MaxValue or 100
+        local ratio = hunger.Value / maxV
+        if ratio * 100 <= ST.hungerThreshold then
+            local food, prompt = findNearestInteractable("food")
+            if not food then food = findNearestFood(); prompt = nil end
+            if food then
+                local char = LP.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.CFrame = food.CFrame + Vector3.new(0, 3, 0)
+                    task.wait(0.2)
+                    if prompt then firePrompt(prompt) end
+                    Notif("N3xt","Auto-feed: dropped to food 🍓")
+                    feedCooldown = 8
+                    task.delay(4, function()
+                        if ST.safehouseOn and ST.safehousePart then
+                            local c2 = LP.Character
+                            local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+                            if h2 then h2.CFrame = ST.safehousePart.CFrame + Vector3.new(0, 4, 0) end
                         end
                     end)
                 end
             end
         end
-    end
+    end)
 
-    RunService.Heartbeat:Connect(autoFeedTick)
-
-    -- ── TP helpers ──
     local function tpTo(p) if not p then return end;local char=LP.Character;local hrp=char and char:FindFirstChild("HumanoidRootPart");if not hrp then return end;local tHRP=p.Character and p.Character:FindFirstChild("HumanoidRootPart");if tHRP then hrp.CFrame=tHRP.CFrame+Vector3.new(0,3.5,0) end end
     local function refreshPlayers() ST.playerList={};for _,p in ipairs(Players:GetPlayers()) do if p~=LP then table.insert(ST.playerList,p) end end end
     local function tpNearestShelter()
@@ -857,18 +1237,58 @@ local function Launch99Nights()
     end
     local function tpNearestResource()
         local char=LP.Character;local hrp=char and char:FindFirstChild("HumanoidRootPart");if not hrp then return end
-        local nearest,nearDist=nil,math.huge
-        for _,obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") then
-                local n=obj.Name:lower();local hit=false
-                for _,kw in ipairs(FOOD_NAMES) do if n:find(kw,1,true) then hit=true;break end end
-                if not hit then for _,kw in ipairs(WOOD_NAMES) do if n:find(kw,1,true) then hit=true;break end end end
-                if not hit then for _,kw in ipairs(ITEM_NAMES) do if n:find(kw,1,true) then hit=true;break end end end
-                if hit then local d=(obj.Position-hrp.Position).Magnitude;if d<nearDist then nearDist=d;nearest=obj end end
+        local target = findNearestInteractable(nil)
+        if target then hrp.CFrame = target.CFrame + Vector3.new(0,4,0); Notif("N3xt","TP to "..target.Name)
+        else Notif("N3xt","No interactable nearby") end
+    end
+
+    -- ── Bring Player (client-side only — fires teleport remotes if any) ──
+    local TELEPORT_KEYWORDS = {"bring","summon","teleport","tp","pull","grab","move","warp","fetch","call"}
+    local function tryBringPlayer(targetPlayer)
+        if not targetPlayer then Notif("N3xt","No player selected"); return end
+        local myChar = LP.Character
+        local myHrp  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myHrp then Notif("N3xt","No character"); return end
+
+        local tChar = targetPlayer.Character
+        local tHrp  = tChar and tChar:FindFirstChild("HumanoidRootPart")
+        if not tHrp then Notif("N3xt",targetPlayer.Name.." has no character"); return end
+
+        -- scan for teleport-adjacent remotes
+        local tpRemotes = {}
+        for _,obj in ipairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
+            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                local n = obj.Name:lower()
+                for _,kw in ipairs(TELEPORT_KEYWORDS) do
+                    if n:find(kw,1,true) then table.insert(tpRemotes, obj); break end
+                end
             end
         end
-        if nearest then hrp.CFrame=nearest.CFrame+Vector3.new(0,4,0);Notif("N3xt","TP to "..nearest.Name)
-        else Notif("N3xt","No resources found") end
+
+        print("[N3xt Bring] found "..#tpRemotes.." teleport-adjacent remotes, firing at "..targetPlayer.Name)
+
+        local shapes = {
+            {targetPlayer},
+            {targetPlayer, myHrp.Position},
+            {targetPlayer, myHrp.CFrame},
+            {targetPlayer.Name},
+            {targetPlayer, myHrp},
+            {targetPlayer, myChar},
+            {tChar},
+            {tHrp, myHrp.Position},
+            {},
+        }
+
+        for _,rem in ipairs(tpRemotes) do
+            for _,args in ipairs(shapes) do
+                pcall(function()
+                    if rem:IsA("RemoteEvent") then rem:FireServer(unpack(args))
+                    else rem:InvokeServer(unpack(args)) end
+                end)
+            end
+        end
+
+        Notif("N3xt","Attempted bring on "..targetPlayer.Name.." — check console")
     end
 
     local NAV={{id="Main",ico="🏠",lbl="Main"},{id="Visuals",ico="👁",lbl="Visuals"},{id="Survival",ico="🛡",lbl="Survival"},{id="Gathering",ico="🌿",lbl="Gathering"},{id="Teleports",ico="📍",lbl="Teleports"},{id="Misc",ico="📦",lbl="Misc"},{id="Settings",ico="⚙",lbl="Settings"}}
@@ -882,13 +1302,8 @@ local function Launch99Nights()
         function() return ST.safehouseOn end,
         function(v) ST.safehouseOn=v end,
         function(v)
-            if v then
-                goToSafehouse()
-            else
-                if ST.safehousePart then
-                    ST.safehousePart:Destroy(); ST.safehousePart=nil
-                end
-            end
+            if v then goToSafehouse()
+            else if ST.safehousePart then ST.safehousePart:Destroy(); ST.safehousePart=nil end end
         end);o=o+1
     mkAction(mp,"Deploy / Return to Safehouse","Build the platform and teleport up",o+1,"☁",function() goToSafehouse() end);o=o+1
     mkTog(mp,"Auto-Feed","Drop to nearest food when hunger is low, then return",o+1,
@@ -910,9 +1325,12 @@ local function Launch99Nights()
     local sp2=pages["Survival"];o=0
     mkSec(sp2,"💥 Hit Aura",o+1);o=o+1
     mkTog(sp2,"Enable Hit Aura","Damage every valid target in radius",o+1,function() return AURA.enabled end,function(v) AURA.enabled=v end);o=o+1
+    mkTog(sp2,"Safe Mode","No remote firing — local damage only (won't backfire)",o+1,function() return AURA.safeMode end,function(v) AURA.safeMode=v end);o=o+1
     mkTog(sp2,"Include Players","Also hit other survivors (use with caution)",o+1,function() return AURA.hitPlayers end,function(v) AURA.hitPlayers=v end);o=o+1
-    mkSld(sp2,"Aura Radius",o+1,10,120,40,function(v) AURA.radius=v end);o=o+1
+    mkTog(sp2,"Diagnostic Overlay","Show which remotes are firing at what",o+1,function() return AURA.diagnostic end,function(v) AURA.diagnostic=v;diagFrame.Visible=v end);o=o+1
+    mkSld(sp2,"Aura Radius",o+1,10,400,40,function(v) AURA.radius=v end);o=o+1
     mkSld(sp2,"Max Targets / Tick",o+1,5,60,25,function(v) AURA.maxTargets=v end);o=o+1
+    mkAction(sp2,"Manual Remote Test","Fire all damage remotes at nearest monster — check console output",o+1,"🧪",function() manualRemoteTest() end);o=o+1
     mkSec(sp2,"🛡 Defense",o+1);o=o+1
     mkTog(sp2,"God Mode (client)","Locks HP + intercepts death state",o+1,function() return ST.godMode end,function(v) ST.godMode=v;setGod(v) end);o=o+1
     mkTog(sp2,"Infinite Stamina","Keeps stamina / energy maxed",o+1,function() return ST.infStamina end,function(v) ST.infStamina=v end);o=o+1
@@ -924,12 +1342,20 @@ local function Launch99Nights()
     mkSld(sp2,"Speed Value",o+1,16,120,28,function(v) ST.speed=v end);o=o+1
 
     local gp=pages["Gathering"];o=0
-    mkSec(gp,"🌿 Auto Collect",o+1);o=o+1
-    mkNote(gp,"⚠ Teleports to nearest resource each tick",o+1,Color3.fromRGB(230,210,100));o=o+1
-    mkTog(gp,"Auto Wood Collect","Teleports to nearest wood / logs",o+1,function() return ST.autoWood end,function(v) ST.autoWood=v end);o=o+1
-    mkTog(gp,"Auto Food Collect","Teleports to nearest berries / food",o+1,function() return ST.autoFood end,function(v) ST.autoFood=v end);o=o+1
+    mkSec(gp,"🌿 Auto Collect (ProximityPrompt based)",o+1);o=o+1
+    mkNote(gp,"Finds ANY interactable (ProximityPrompt) nearby and fires it",o+1,Color3.fromRGB(140,210,140));o=o+1
+    mkTog(gp,"Auto Wood Collect","Teleports to nearest wood interactable",o+1,function() return ST.autoWood end,function(v) ST.autoWood=v end);o=o+1
+    mkTog(gp,"Auto Food Collect","Teleports to nearest food interactable",o+1,function() return ST.autoFood end,function(v) ST.autoFood=v end);o=o+1
+    mkTog(gp,"Gathering Diagnostic","Show all interactables within 80 studs",o+1,function() return ST.gatherDiag end,function(v) ST.gatherDiag=v end);o=o+1
     mkSec(gp,"🎒 Manual",o+1);o=o+1
-    mkAction(gp,"TP to Nearest Resource","Teleport once to closest item",o+1,"🎯",function() tpNearestResource() end);o=o+1
+    mkAction(gp,"TP to Nearest Interactable","Teleport once to closest prompt part",o+1,"🎯",function() tpNearestResource() end);o=o+1
+    mkAction(gp,"Force Fire Nearest Prompt","Teleport + fire the nearest ProximityPrompt",o+1,"⚡",function()
+        local t, p = findNearestInteractable(nil)
+        if t then
+            local char=LP.Character;local hrp=char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = t.CFrame + Vector3.new(0,3,0); task.wait(0.2); firePrompt(p); Notif("N3xt","Fired prompt at "..t.Name) end
+        else Notif("N3xt","No prompt nearby") end
+    end);o=o+1
 
     local tp2p=pages["Teleports"];o=0
     mkAction(tp2p,"TP to Nearest Shelter","Find the closest safe zone or base",o+1,"🏕",function() tpNearestShelter() end);o=o+1
@@ -945,6 +1371,7 @@ local function Launch99Nights()
     plBtn.MouseButton1Click:Connect(function() refreshPlayers();if #ST.playerList==0 then plDDL.Text="--";return end;plIdx=plIdx%#ST.playerList+1;ST.selectedPlayer=ST.playerList[plIdx];plDDL.Text=ST.playerList[plIdx].Name end)
     mkAction(tp2p,"Refresh Player List","Update the player dropdown",o+1,"🔄",function() refreshPlayers();if #ST.playerList>0 then ST.selectedPlayer=ST.playerList[1];plDDL.Text=ST.playerList[1].Name;plIdx=1 else plDDL.Text="--" end end);o=o+1
     mkAction(tp2p,"Teleport to Selected","TP to the chosen player",o+1,"🎯",function() tpTo(ST.selectedPlayer) end);o=o+1
+    mkAction(tp2p,"Try to Bring Selected","Fire every teleport remote to pull the player to you",o+1,"🪢",function() tryBringPlayer(ST.selectedPlayer) end);o=o+1
 
     local mip=pages["Misc"];o=0
     mkSec(mip,"🌙 Night Management",o+1);o=o+1
@@ -956,7 +1383,6 @@ local function Launch99Nights()
     mkAction(mip,"Force Night","Force world time to night",o+1,"🌙",function() Lighting.ClockTime=20;Lighting.Brightness=1;Notif("N3xt","Forced Night") end);o=o+1
     mkAction(mip,"Force Midnight","The darkest hour — no moon",o+1,"🌑",function() Lighting.ClockTime=0;Lighting.Brightness=0.5;Notif("N3xt","Forced Midnight") end);o=o+1
 
-    -- Night loop tick
     task.spawn(function()
         while SG.Parent do
             task.wait(0.5)
